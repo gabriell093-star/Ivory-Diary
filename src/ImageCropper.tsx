@@ -1,16 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Point = { x: number; y: number };
 type Corner = 'nw' | 'ne' | 'sw' | 'se';
-type Gesture = {
-  mode: 'move' | 'resize' | 'draw';
-  start: Point;
-  original: Rect;
-  corner?: Corner;
-  anchor?: Point;
-};
-
+type Gesture = { mode: 'move' | 'resize' | 'draw'; start: Point; original: Rect; corner?: Corner; anchor?: Point };
+type Preset = 'original' | 'square' | 'portrait' | 'landscape';
 type Props = {
   file: File;
   onCancel: () => void;
@@ -19,15 +13,50 @@ type Props = {
   aspectRatio?: number;
 };
 
-export default function ImageCropper({
-  file, onCancel, onComplete, busy = false, aspectRatio,
-}: Props) {
+const presetNames: Record<Preset, string> = {
+  original: 'Asli',
+  square: '1 : 1',
+  portrait: '4 : 5',
+  landscape: '16 : 9',
+};
+
+export default function ImageCropper({ file, onCancel, onComplete, busy = false, aspectRatio }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const [selection, setSelection] = useState<Rect | null>(null);
   const [display, setDisplay] = useState<{ x: number; y: number; w: number; h: number; scale: number } | null>(null);
+  const [sourceRatio, setSourceRatio] = useState(1);
+  const [preset, setPreset] = useState<Preset>(aspectRatio === 4 / 5 ? 'portrait' : 'original');
+  const [mode, setMode] = useState<'automatic' | 'manual'>('automatic');
   const [error, setError] = useState('');
+
+  const ratioForPreset = (value: Preset, originalRatio: number) => {
+    if (value === 'square') return 1;
+    if (value === 'portrait') return 4 / 5;
+    if (value === 'landscape') return 16 / 9;
+    return originalRatio;
+  };
+
+  const currentRatio = useMemo(
+    () => mode === 'manual' ? null : ratioForPreset(preset, sourceRatio),
+    [mode, preset, sourceRatio],
+  );
+
+  const fitSelection = (frame: NonNullable<typeof display>, ratio: number): Rect => {
+    let width = Math.min(frame.w * .88, frame.h * .88 * ratio);
+    let height = width / ratio;
+    if (height > frame.h * .88) {
+      height = frame.h * .88;
+      width = height * ratio;
+    }
+    return {
+      x: frame.x + (frame.w - width) / 2,
+      y: frame.y + (frame.h - height) / 2,
+      w: width,
+      h: height,
+    };
+  };
 
   const draw = (rect: Rect | null) => {
     const canvas = canvasRef.current;
@@ -35,7 +64,6 @@ export default function ImageCropper({
     if (!canvas || !image) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const width = canvas.width;
     const height = canvas.height;
     const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
@@ -43,16 +71,14 @@ export default function ImageCropper({
     const imageHeight = image.naturalHeight * scale;
     const imageX = (width - imageWidth) / 2;
     const imageY = (height - imageHeight) / 2;
-    setDisplay({ x: imageX, y: imageY, w: imageWidth, h: imageHeight, scale });
-
+    const frame = { x: imageX, y: imageY, w: imageWidth, h: imageHeight, scale };
+    setDisplay(frame);
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = '#171313';
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(image, imageX, imageY, imageWidth, imageHeight);
-
     if (!rect || rect.w < 2 || rect.h < 2) return;
 
-    // Darken the area that will be removed.
     ctx.fillStyle = 'rgba(0,0,0,.58)';
     ctx.fillRect(imageX, imageY, imageWidth, imageHeight);
     ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
@@ -62,32 +88,22 @@ export default function ImageCropper({
       (rect.y - imageY) / scale,
       rect.w / scale,
       rect.h / scale,
-      rect.x,
-      rect.y,
-      rect.w,
-      rect.h,
+      rect.x, rect.y, rect.w, rect.h,
     );
 
-    // Crop frame and composition guides.
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#fff';
     ctx.lineWidth = 3;
-    ctx.setLineDash([]);
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeStyle = 'rgba(255,255,255,.7)';
+    ctx.strokeStyle = 'rgba(255,255,255,.65)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(rect.x + rect.w / 3, rect.y);
-    ctx.lineTo(rect.x + rect.w / 3, rect.y + rect.h);
-    ctx.moveTo(rect.x + rect.w * 2 / 3, rect.y);
-    ctx.lineTo(rect.x + rect.w * 2 / 3, rect.y + rect.h);
-    ctx.moveTo(rect.x, rect.y + rect.h / 3);
-    ctx.lineTo(rect.x + rect.w, rect.y + rect.h / 3);
-    ctx.moveTo(rect.x, rect.y + rect.h * 2 / 3);
-    ctx.lineTo(rect.x + rect.w, rect.y + rect.h * 2 / 3);
+    ctx.moveTo(rect.x + rect.w / 3, rect.y); ctx.lineTo(rect.x + rect.w / 3, rect.y + rect.h);
+    ctx.moveTo(rect.x + rect.w * 2 / 3, rect.y); ctx.lineTo(rect.x + rect.w * 2 / 3, rect.y + rect.h);
+    ctx.moveTo(rect.x, rect.y + rect.h / 3); ctx.lineTo(rect.x + rect.w, rect.y + rect.h / 3);
+    ctx.moveTo(rect.x, rect.y + rect.h * 2 / 3); ctx.lineTo(rect.x + rect.w, rect.y + rect.h * 2 / 3);
     ctx.stroke();
 
-    // Large red handles are intentionally easy to grab on a touchscreen.
-    const handle = 20;
+    const handle = 22;
     const corners: Point[] = [
       { x: rect.x, y: rect.y },
       { x: rect.x + rect.w, y: rect.y },
@@ -97,17 +113,10 @@ export default function ImageCropper({
     corners.forEach(({ x, y }) => {
       ctx.fillStyle = '#b5232b';
       ctx.fillRect(x - handle / 2, y - handle / 2, handle, handle);
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
       ctx.strokeRect(x - handle / 2, y - handle / 2, handle, handle);
     });
-    ctx.fillStyle = 'rgba(0,0,0,.58)';
-    ctx.fillRect(rect.x + rect.w / 2 - 48, rect.y + rect.h / 2 - 13, 96, 26);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('GESER AREA', rect.x + rect.w / 2, rect.y + rect.h / 2);
   };
 
   useEffect(() => {
@@ -119,31 +128,28 @@ export default function ImageCropper({
       imageRef.current = image;
       const canvas = canvasRef.current;
       if (!canvas || !image.naturalWidth || !image.naturalHeight) {
-        setError('Foto tidak dapat disiapkan untuk crop.');
+        setError('Foto tidak dapat disiapkan. Pilih file lain.');
         return;
       }
       const scale = Math.min(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
       const imageWidth = image.naturalWidth * scale;
       const imageHeight = image.naturalHeight * scale;
-      const imageX = (canvas.width - imageWidth) / 2;
-      const imageY = (canvas.height - imageHeight) / 2;
+      const frame = {
+        x: (canvas.width - imageWidth) / 2,
+        y: (canvas.height - imageHeight) / 2,
+        w: imageWidth,
+        h: imageHeight,
+        scale,
+      };
       const ratio = aspectRatio && Number.isFinite(aspectRatio) && aspectRatio > 0
         ? aspectRatio
-        : imageWidth / imageHeight;
-      let cropWidth = Math.min(imageWidth * 0.9, imageHeight * 0.9 * ratio);
-      let cropHeight = cropWidth / ratio;
-      if (cropHeight > imageHeight * 0.9) {
-        cropHeight = imageHeight * 0.9;
-        cropWidth = cropHeight * ratio;
-      }
-      const initial = {
-        x: imageX + (imageWidth - cropWidth) / 2,
-        y: imageY + (imageHeight - cropHeight) / 2,
-        w: cropWidth,
-        h: cropHeight,
-      };
-      setDisplay({ x: imageX, y: imageY, w: imageWidth, h: imageHeight, scale });
-      setSelection(initial);
+        : image.naturalWidth / image.naturalHeight;
+      const initialPreset: Preset = Math.abs(ratio - 4 / 5) < .001 ? 'portrait' : 'original';
+      setSourceRatio(image.naturalWidth / image.naturalHeight);
+      setPreset(initialPreset);
+      setMode('automatic');
+      setDisplay(frame);
+      setSelection(fitSelection(frame, ratio));
       setError('');
     };
     image.onerror = () => setError('Foto tidak dapat dibuka. Coba file JPG, PNG, atau WebP lain.');
@@ -156,7 +162,9 @@ export default function ImageCropper({
     };
   }, [file, aspectRatio]);
 
-  useEffect(() => { draw(selection); }, [selection]);
+  useEffect(() => {
+    if (imageRef.current) draw(selection);
+  }, [selection]);
 
   const point = (event: PointerEvent<HTMLCanvasElement>): Point => {
     const canvas = canvasRef.current!;
@@ -168,44 +176,37 @@ export default function ImageCropper({
   };
 
   const onDown = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (!display || busy) return;
+    if (!display || !selection || busy) return;
     const p = point(event);
-    const inImage = p.x >= display.x && p.y >= display.y &&
+    const insideImage = p.x >= display.x && p.y >= display.y &&
       p.x <= display.x + display.w && p.y <= display.y + display.h;
-    if (!inImage) return;
-
+    if (!insideImage) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    const current = selection ?? {
-      x: display.x + display.w * .05,
-      y: display.y + display.h * .05,
-      w: display.w * .9,
-      h: display.h * .9,
-    };
-    const inSelection = p.x >= current.x && p.x <= current.x + current.w &&
-      p.y >= current.y && p.y <= current.y + current.h;
 
-    if (inSelection) {
+    const insideCrop = p.x >= selection.x && p.x <= selection.x + selection.w &&
+      p.y >= selection.y && p.y <= selection.y + selection.h;
+    if (insideCrop) {
       const corners: { key: Corner; x: number; y: number }[] = [
-        { key: 'nw', x: current.x, y: current.y },
-        { key: 'ne', x: current.x + current.w, y: current.y },
-        { key: 'sw', x: current.x, y: current.y + current.h },
-        { key: 'se', x: current.x + current.w, y: current.y + current.h },
+        { key: 'nw', x: selection.x, y: selection.y },
+        { key: 'ne', x: selection.x + selection.w, y: selection.y },
+        { key: 'sw', x: selection.x, y: selection.y + selection.h },
+        { key: 'se', x: selection.x + selection.w, y: selection.y + selection.h },
       ];
       const nearest = corners
-        .map(corner => ({ ...corner, distance: Math.hypot(p.x - corner.x, p.y - corner.y) }))
+        .map(item => ({ ...item, distance: Math.hypot(p.x - item.x, p.y - item.y) }))
         .sort((left, right) => left.distance - right.distance)[0];
-      if (nearest.distance < 42) {
+      if (nearest.distance <= 44) {
         const anchor = {
-          x: nearest.key.includes('w') ? current.x + current.w : current.x,
-          y: nearest.key.includes('n') ? current.y + current.h : current.y,
+          x: nearest.key.includes('w') ? selection.x + selection.w : selection.x,
+          y: nearest.key.includes('n') ? selection.y + selection.h : selection.y,
         };
-        gestureRef.current = { mode: 'resize', start: p, original: current, corner: nearest.key, anchor };
+        gestureRef.current = { mode: 'resize', start: p, original: selection, corner: nearest.key, anchor };
       } else {
-        gestureRef.current = { mode: 'move', start: p, original: current };
+        gestureRef.current = { mode: 'move', start: p, original: selection };
       }
     } else {
-      gestureRef.current = { mode: 'draw', start: p, original: current };
+      gestureRef.current = { mode: 'draw', start: p, original: selection };
     }
   };
 
@@ -214,7 +215,6 @@ export default function ImageCropper({
     if (!gesture || !display || busy) return;
     event.preventDefault();
     const p = point(event);
-
     if (gesture.mode === 'move') {
       const dx = p.x - gesture.start.x;
       const dy = p.y - gesture.start.y;
@@ -228,27 +228,26 @@ export default function ImageCropper({
 
     const anchor = gesture.mode === 'resize' && gesture.anchor ? gesture.anchor : gesture.start;
     const corner = gesture.corner ?? 'se';
-    const directionX = gesture.mode === 'resize' && corner.includes('w') ? -1 : 1;
-    const directionY = gesture.mode === 'resize' && corner.includes('n') ? -1 : 1;
-    const maxWidth = directionX > 0 ? display.x + display.w - anchor.x : anchor.x - display.x;
-    const maxHeight = directionY > 0 ? display.y + display.h - anchor.y : anchor.y - display.y;
-    let width = Math.max(18, Math.abs(p.x - anchor.x));
-    let height = Math.max(18, Math.abs(p.y - anchor.y));
-    const ratio = aspectRatio && Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : null;
-    if (ratio) {
-      width = Math.max(width, height * ratio);
-      height = width / ratio;
+    const dirX = gesture.mode === 'resize' && corner.includes('w') ? -1 : 1;
+    const dirY = gesture.mode === 'resize' && corner.includes('n') ? -1 : 1;
+    const maxW = dirX > 0 ? display.x + display.w - anchor.x : anchor.x - display.x;
+    const maxH = dirY > 0 ? display.y + display.h - anchor.y : anchor.y - display.y;
+    let width = Math.max(16, Math.abs(p.x - anchor.x));
+    let height = Math.max(16, Math.abs(p.y - anchor.y));
+    if (currentRatio) {
+      width = Math.max(width, height * currentRatio);
+      height = width / currentRatio;
     }
-    width = Math.min(width, maxWidth);
-    height = ratio ? width / ratio : Math.min(height, maxHeight);
-    if (ratio && height > maxHeight) {
-      height = maxHeight;
-      width = height * ratio;
+    width = Math.min(width, maxW);
+    height = currentRatio ? width / currentRatio : Math.min(height, maxH);
+    if (currentRatio && height > maxH) {
+      height = maxH;
+      width = height * currentRatio;
     }
     if (width < 12 || height < 12) return;
     setSelection({
-      x: directionX > 0 ? anchor.x : anchor.x - width,
-      y: directionY > 0 ? anchor.y : anchor.y - height,
+      x: dirX > 0 ? anchor.x : anchor.x - width,
+      y: dirY > 0 ? anchor.y : anchor.y - height,
       w: width,
       h: height,
     });
@@ -256,27 +255,28 @@ export default function ImageCropper({
 
   const onUp = () => { gestureRef.current = null; };
 
-  const useWholePhoto = () => {
-    if (!display || busy) return;
-    setSelection({ x: display.x, y: display.y, w: display.w, h: display.h });
+  const changePreset = (value: Preset) => {
+    setPreset(value);
+    setMode('automatic');
+    if (display) setSelection(fitSelection(display, ratioForPreset(value, sourceRatio)));
+  };
+
+  const changeMode = (next: 'automatic' | 'manual') => {
+    setMode(next);
+    setError('');
+    if (next === 'automatic' && display) {
+      setSelection(fitSelection(display, ratioForPreset(preset, sourceRatio)));
+    }
+  };
+
+  const reset = () => {
+    if (display) setSelection(fitSelection(display, currentRatio ?? sourceRatio));
     setError('');
   };
 
-  const resetSelection = () => {
-    if (!display || busy) return;
-    const ratio = aspectRatio && aspectRatio > 0 ? aspectRatio : display.w / display.h;
-    let width = Math.min(display.w * .9, display.h * .9 * ratio);
-    let height = width / ratio;
-    if (height > display.h * .9) {
-      height = display.h * .9;
-      width = height * ratio;
-    }
-    setSelection({
-      x: display.x + (display.w - width) / 2,
-      y: display.y + (display.h - height) / 2,
-      w: width,
-      h: height,
-    });
+  const useWholePhoto = () => {
+    if (!display) return;
+    setSelection({ x: display.x, y: display.y, w: display.w, h: display.h });
     setError('');
   };
 
@@ -290,7 +290,7 @@ export default function ImageCropper({
     const sw = Math.min(image.naturalWidth - sx, rect.w / frame.scale);
     const sh = Math.min(image.naturalHeight - sy, rect.h / frame.scale);
     if (sw < 1 || sh < 1) {
-      setError('Area crop terlalu kecil. Atur ulang area lalu coba lagi.');
+      setError('Area crop tidak valid. Atur ulang lalu coba lagi.');
       return;
     }
     const output = document.createElement('canvas');
@@ -309,12 +309,12 @@ export default function ImageCropper({
         return;
       }
       if (blob.size > 8 * 1024 * 1024) {
-        setError('Hasil foto masih terlalu besar. Atur area crop yang lebih kecil lalu coba lagi.');
+        setError('Hasil foto terlalu besar. Perkecil area crop lalu coba lagi.');
         return;
       }
       const cropped = new File(
         [blob],
-        file.name.replace(/\.[^.]+$/, '') + '-crop.jpg',
+        file.name.replace(/\\.[^.]+$/, '') + '-crop.jpg',
         { type: 'image/jpeg', lastModified: Date.now() },
       );
       try {
@@ -326,18 +326,42 @@ export default function ImageCropper({
   };
 
   return (
-    <div className="crop-backdrop" role="dialog" aria-modal="true" aria-label="Potong foto">
-      <section className="crop-dialog">
-        <div className="crop-heading">
-          <div><span className="eyebrow">IMAGE / EDIT</span><h2>Atur potongan foto</h2></div>
-          <button type="button" onClick={onCancel} disabled={busy} aria-label="Tutup">×</button>
+    <section className="crop-editor-card" aria-label="Editor pemotongan foto">
+      <div className="crop-editor-top">
+        <div>
+          <span className="eyebrow">IMAGE / EDIT</span>
+          <h2>Atur area foto</h2>
+          <p className="crop-file-name">{file.name} · {(file.size / (1024 * 1024)).toFixed(1)} MB</p>
         </div>
-        <div className="crop-help">
-          <b>PANDUAN CROP FOTO</b>
-          <span><strong>1.</strong> Ketuk dan geser bagian tengah bingkai untuk memindahkan area foto.</span>
-          <span><strong>2.</strong> Tarik salah satu kotak merah di sudut untuk memperbesar atau memperkecil potongan.</span>
-          <span><strong>3.</strong> Area gelap adalah bagian yang akan dibuang.</span>
+        <button type="button" className="crop-cancel-button" onClick={onCancel} disabled={busy}>Batal</button>
+      </div>
+
+      <div className="crop-mode-switch" aria-label="Mode crop">
+        <button type="button" className={mode === 'automatic' ? 'active' : ''} onClick={() => changeMode('automatic')} disabled={busy}>Ukuran otomatis</button>
+        <button type="button" className={mode === 'manual' ? 'active' : ''} onClick={() => changeMode('manual')} disabled={busy}>Crop manual</button>
+      </div>
+
+      {mode === 'automatic' ? (
+        <div className="crop-preset-row">
+          {(['original', 'square', 'portrait', 'landscape'] as Preset[]).map(item => (
+            <button type="button" key={item} className={preset === item ? 'active' : ''} onClick={() => changePreset(item)} disabled={busy}>
+              {presetNames[item]}
+            </button>
+          ))}
         </div>
+      ) : (
+        <div className="crop-manual-note">
+          Mode manual: seret bingkai untuk memindahkannya. Tarik sudut untuk mengubah lebar dan tinggi secara bebas.
+        </div>
+      )}
+
+      <div className="crop-instructions">
+        <div><b>1</b><span><strong>Geser</strong> bagian tengah bingkai untuk memilih posisi foto.</span></div>
+        <div><b>2</b><span><strong>Tarik</strong> kotak merah di sudut untuk mengubah ukuran.</span></div>
+        <div><b>3</b><span><strong>Area gelap</strong> adalah bagian yang akan dipotong.</span></div>
+      </div>
+
+      <div className="crop-canvas-wrap">
         <canvas
           ref={canvasRef}
           width={640}
@@ -349,15 +373,16 @@ export default function ImageCropper({
           onPointerCancel={onUp}
           onLostPointerCapture={onUp}
         />
-        {error && <p className="error-text" role="alert">{error}</p>}
-        <div className="crop-actions">
-          <button className="button secondary" type="button" onClick={resetSelection} disabled={busy}>Atur ulang</button>
-          <button className="button secondary" type="button" onClick={useWholePhoto} disabled={busy}>Gunakan seluruh foto</button>
-          <button className="button primary" type="button" onClick={crop} disabled={busy || !display || !selection}>
-            {busy ? 'Mengunggah foto…' : 'Gunakan hasil crop'}
-          </button>
-        </div>
-      </section>
-    </div>
+      </div>
+      {error && <p className="crop-error" role="alert">{error}</p>}
+
+      <div className="crop-editor-actions">
+        <button type="button" className="crop-action-secondary" onClick={reset} disabled={busy}>Atur ulang</button>
+        <button type="button" className="crop-action-secondary" onClick={useWholePhoto} disabled={busy}>Gunakan seluruh foto</button>
+        <button type="button" className="crop-action-primary" onClick={crop} disabled={busy || !selection || !display}>
+          {busy ? 'Mengunggah…' : 'Gunakan hasil crop'}
+        </button>
+      </div>
+    </section>
   );
 }

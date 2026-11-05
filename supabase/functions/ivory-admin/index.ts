@@ -127,13 +127,13 @@ const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = 
     details: v => typeof v === "string" && v.length <= 4000,
     pricing_type: v => ["fixed", "tiered", "per_unit", "range"].includes(String(v)),
     price_label: v => typeof v === "string" && v.length <= 120,
-    base_price: v => v === null || (Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 1000000000),
+    base_price: v => v === null || (typeof v === "number" && Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 1000000000),
     unit_label: v => v === null || (typeof v === "string" && v.length <= 40),
     options: v => Array.isArray(v) && v.length <= 30 && v.every(item =>
       isRecord(item) &&
       Object.keys(item).every(key => key === "label" || key === "price") &&
       typeof item.label === "string" && item.label.trim().length > 0 && item.label.length <= 80 &&
-      Number.isSafeInteger(item.price) && Number(item.price) >= 0 && Number(item.price) <= 1000000000
+      typeof item.price === "number" && Number.isSafeInteger(item.price) && Number(item.price) >= 0 && Number(item.price) <= 1000000000
     ),
     is_active: v => typeof v === "boolean",
     sort_order: v => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,

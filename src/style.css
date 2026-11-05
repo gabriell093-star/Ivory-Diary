@@ -92,3 +92,30 @@
  .admin-mobile-nav button.active{border-color:var(--red);background:var(--red-soft);color:var(--red);font-weight:800}
  .admin-side .admin-caption,.admin-side .side-bottom{display:none}
 }
+
+
+/* Final contact and Owner navigation refinements */
+.owner-back-link{display:inline-flex;align-items:center;justify-content:flex-start;gap:8px;padding:11px 10px;border:1px solid var(--line);background:transparent;border-radius:8px;color:var(--muted);font-size:10px;font-weight:700;margin:24px 0 8px;transition:color .2s,border-color .2s,background .2s}
+.owner-back-link:hover{color:var(--red);border-color:var(--red);background:var(--red-soft)}
+.footer-contact{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:180px}
+.footer-contact-label{font-size:8px;letter-spacing:.14em;color:var(--muted);font-weight:800}
+.footer-contact a{font-size:9px;color:var(--muted);text-decoration:none}
+.footer-contact a:hover{color:var(--red)}
+.footer-contact .footer-channel-link{display:inline-flex;align-items:center;gap:5px;color:var(--red);font-weight:800;margin-top:3px}
+.whatsapp-channel-link{display:flex;align-items:center;gap:9px;margin:15px 0 4px;padding:13px 14px;border:1px solid var(--line);border-radius:9px;text-decoration:none;color:var(--ink);background:var(--bg-soft);transition:border-color .2s,background .2s}
+.whatsapp-channel-link:hover{border-color:var(--red);background:var(--red-soft)}
+.whatsapp-channel-link span{font-size:9px;color:var(--muted)}
+.whatsapp-channel-link b{font-size:11px;color:var(--red);margin-left:auto}
+.whatsapp-channel-link svg{color:var(--red)}
+.staff-choice-card em{display:block;font-size:8px;line-height:1.5;color:var(--muted);font-style:normal;margin-top:3px}
+@media(max-width:640px){
+ .owner-back-link{white-space:nowrap;margin:0 7px 0 0;padding:9px 11px;font-size:9px}
+ .admin-side{gap:8px}
+ .footer-contact{order:3;width:100%;min-width:0;margin:4px 0 8px}
+ .footer-contact a{font-size:10px}
+ .copyright{order:4;width:100%}
+ .owner-link{order:5}
+ .whatsapp-channel-link{gap:7px}
+ .whatsapp-channel-link span{font-size:8px}
+ .whatsapp-channel-link b{font-size:10px}
+}

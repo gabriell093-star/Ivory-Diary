@@ -884,3 +884,210 @@
   .crop-editor-actions button{font-size:10px;padding:11px 7px}
   .crop-editor-actions .crop-action-primary{grid-column:1/-1;grid-row:1}
 }
+
+
+/* Final section marker system: no legacy kicker selectors can reach these new classes. */
+#root .section-marker{
+  display:flex!important;
+  flex-flow:row nowrap!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:12px!important;
+  width:max-content!important;
+  max-width:100%!important;
+  min-width:0!important;
+  margin:0!important;
+  padding:0!important;
+  text-align:left!important;
+  line-height:1!important;
+}
+#root .section-marker-number{
+  display:block!important;
+  flex:0 0 28px!important;
+  width:28px!important;
+  min-width:28px!important;
+  margin:0!important;
+  padding:0!important;
+  color:var(--red)!important;
+  font-family:var(--sans)!important;
+  font-size:11px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  letter-spacing:.12em!important;
+  text-align:left!important;
+  white-space:nowrap!important;
+}
+#root .section-marker-title{
+  display:block!important;
+  flex:0 0 auto!important;
+  width:auto!important;
+  min-width:0!important;
+  margin:0!important;
+  padding:0!important;
+  color:var(--muted)!important;
+  font-family:var(--sans)!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  letter-spacing:.16em!important;
+  text-align:left!important;
+  white-space:nowrap!important;
+}
+#root .section-heading>div:first-child{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+#root .section-heading .section-marker+h2{margin-top:28px}
+@media(max-width:640px){
+  #root .section-marker{gap:10px!important}
+  #root .section-marker-number{flex-basis:26px!important;width:26px!important;min-width:26px!important;font-size:10px!important}
+  #root .section-marker-title{font-size:8px!important;letter-spacing:.13em!important}
+  #root .section-heading .section-marker+h2{margin-top:24px}
+}
+
+/* Manual crop is operable with controls, not only gestures on the image. */
+.crop-preset-row{grid-template-columns:repeat(3,minmax(0,1fr))}
+.crop-manual-controls{
+  display:grid;
+  grid-template-columns:minmax(150px,.8fr) minmax(0,1.2fr);
+  gap:16px;
+  margin-top:14px;
+  padding:15px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--bg-soft);
+}
+.crop-position-controls>div:first-child{display:grid;gap:5px;margin-bottom:12px}
+.crop-position-controls>div:first-child>b{font-size:9px;letter-spacing:.14em;color:var(--red)}
+.crop-position-controls>div:first-child>span{font-size:10px;line-height:1.5;color:var(--muted)}
+.crop-direction-pad{
+  display:grid;
+  grid-template-columns:repeat(3,42px);
+  grid-template-rows:repeat(3,42px);
+  gap:4px;
+  justify-content:start;
+}
+.crop-direction-pad button{
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--panel,var(--bg));
+  color:var(--text);
+  font-size:18px;
+  font-weight:700;
+  touch-action:manipulation;
+}
+.crop-direction-pad button:active{border-color:var(--red);color:var(--red)}
+.crop-direction-pad .crop-direction-center{color:var(--red);font-size:22px}
+.crop-size-controls{display:grid;align-content:center;gap:22px}
+.crop-size-controls label{display:grid;gap:10px}
+.crop-size-controls label>span{display:flex;justify-content:space-between;gap:12px;font-size:11px}
+.crop-size-controls output{color:var(--red);font-weight:800;font-variant-numeric:tabular-nums}
+.crop-size-controls input[type=range]{display:block;width:100%;min-height:28px;accent-color:var(--red);cursor:pointer;touch-action:pan-y}
+@media(max-width:640px){
+  .crop-manual-controls{grid-template-columns:1fr;gap:18px;padding:12px}
+  .crop-position-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px}
+  .crop-position-controls>div:first-child{margin:0}
+  .crop-direction-pad{grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px)}
+  .crop-size-controls{gap:15px}
+  .crop-preset-row{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+
+/* Final section marker system: no legacy kicker selectors can reach these new classes. */
+#root .section-marker{
+  display:flex!important;
+  flex-flow:row nowrap!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:12px!important;
+  width:max-content!important;
+  max-width:100%!important;
+  min-width:0!important;
+  margin:0!important;
+  padding:0!important;
+  text-align:left!important;
+  line-height:1!important;
+}
+#root .section-marker-number{
+  display:block!important;
+  flex:0 0 28px!important;
+  width:28px!important;
+  min-width:28px!important;
+  margin:0!important;
+  padding:0!important;
+  color:var(--red)!important;
+  font-family:var(--sans)!important;
+  font-size:11px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  letter-spacing:.12em!important;
+  text-align:left!important;
+  white-space:nowrap!important;
+}
+#root .section-marker-title{
+  display:block!important;
+  flex:0 0 auto!important;
+  width:auto!important;
+  min-width:0!important;
+  margin:0!important;
+  padding:0!important;
+  color:var(--muted)!important;
+  font-family:var(--sans)!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  letter-spacing:.16em!important;
+  text-align:left!important;
+  white-space:nowrap!important;
+}
+#root .section-heading>div:first-child{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+#root .section-heading .section-marker+h2{margin-top:28px}
+@media(max-width:640px){
+  #root .section-marker{gap:10px!important}
+  #root .section-marker-number{flex-basis:26px!important;width:26px!important;min-width:26px!important;font-size:10px!important}
+  #root .section-marker-title{font-size:8px!important;letter-spacing:.13em!important}
+  #root .section-heading .section-marker+h2{margin-top:24px}
+}
+
+/* Manual crop is operable with controls, not only gestures on the image. */
+.crop-preset-row{grid-template-columns:repeat(3,minmax(0,1fr))}
+.crop-manual-controls{
+  display:grid;
+  grid-template-columns:minmax(150px,.8fr) minmax(0,1.2fr);
+  gap:16px;
+  margin-top:14px;
+  padding:15px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--bg-soft);
+}
+.crop-position-controls>div:first-child{display:grid;gap:5px;margin-bottom:12px}
+.crop-position-controls>div:first-child>b{font-size:9px;letter-spacing:.14em;color:var(--red)}
+.crop-position-controls>div:first-child>span{font-size:10px;line-height:1.5;color:var(--muted)}
+.crop-direction-pad{
+  display:grid;
+  grid-template-columns:repeat(3,42px);
+  grid-template-rows:repeat(3,42px);
+  gap:4px;
+  justify-content:start;
+}
+.crop-direction-pad button{
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--panel,var(--bg));
+  color:var(--text);
+  font-size:18px;
+  font-weight:700;
+  touch-action:manipulation;
+}
+.crop-direction-pad button:active{border-color:var(--red);color:var(--red)}
+.crop-direction-pad .crop-direction-center{color:var(--red);font-size:22px}
+.crop-size-controls{display:grid;align-content:center;gap:22px}
+.crop-size-controls label{display:grid;gap:10px}
+.crop-size-controls label>span{display:flex;justify-content:space-between;gap:12px;font-size:11px}
+.crop-size-controls output{color:var(--red);font-weight:800;font-variant-numeric:tabular-nums}
+.crop-size-controls input[type=range]{display:block;width:100%;min-height:28px;accent-color:var(--red);cursor:pointer;touch-action:pan-y}
+@media(max-width:640px){
+  .crop-manual-controls{grid-template-columns:1fr;gap:18px;padding:12px}
+  .crop-position-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px}
+  .crop-position-controls>div:first-child{margin:0}
+  .crop-direction-pad{grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px)}
+  .crop-size-controls{gap:15px}
+  .crop-preset-row{grid-template-columns:repeat(3,minmax(0,1fr))}
+}

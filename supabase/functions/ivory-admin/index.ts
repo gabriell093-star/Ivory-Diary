@@ -82,9 +82,9 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const queryAction = url.searchParams.get("action");
     let body: Record<string, unknown> = {};
-    if (req.method !== "GET") {
+    if (req.method !== "GET" && queryAction !== "upload") {
       try {
-        body = await readJsonBody(req, queryAction === "upload" ? 12_000_000 : 256_000);
+        body = await readJsonBody(req, 256_000);
       } catch (error) {
         if (error instanceof RequestBodyError) return json({ error: error.message }, error.status);
         return json({ error: "Format permintaan tidak valid." }, 400);
@@ -170,29 +170,38 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "upload" && req.method === "POST") {
-      const fileName = String(body.fileName || "").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 100);
-      const mime = String(body.contentType || "");
-      const base64 = String(body.base64 || "");
-      if (!fileName || mime !== "image/jpeg" || !allowedImageTypes.has(mime) || !base64 || base64.length > 11_200_000) {
-        return json({ error: "Hasil crop harus berupa JPEG yang valid dan berukuran maksimal 8 MB." }, 400);
+      const maxFileBytes = 8 * 1024 * 1024;
+      const declaredLength = Number(req.headers.get("content-length") || 0);
+      if (Number.isFinite(declaredLength) && declaredLength > maxFileBytes + 128 * 1024) {
+        return json({ error: "Ukuran foto terlalu besar. Maksimal 8 MB setelah crop." }, 413);
       }
-      let binary: Uint8Array;
-      try {
-        binary = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-      } catch {
-        return json({ error: "Data gambar tidak valid." }, 400);
+      let form: FormData;
+      try { form = await req.formData(); }
+      catch { return json({ error: "Form upload tidak valid. Silakan pilih ulang fotonya." }, 400); }
+      const uploadedFile = form.get("file");
+      if (!(uploadedFile instanceof File)) return json({ error: "File foto tidak ditemukan pada permintaan upload." }, 400);
+      const fileName = String(form.get("fileName") || uploadedFile.name || "ivory-photo.jpg")
+        .replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 100);
+      const mime = uploadedFile.type;
+      if (!fileName || mime !== "image/jpeg" || !allowedImageTypes.has(mime)) {
+        return json({ error: "Hasil crop harus berupa JPEG." }, 400);
       }
-      if (binary.length < 4 || binary.length > 8 * 1024 * 1024 ||
-          binary[0] !== 0xff || binary[1] !== 0xd8 || binary[2] !== 0xff ||
+      if (uploadedFile.size < 4 || uploadedFile.size > maxFileBytes) {
+        return json({ error: "Ukuran foto maksimal 8 MB setelah crop." }, 413);
+      }
+      const binary = new Uint8Array(await uploadedFile.arrayBuffer());
+      if (binary.length < 4 || binary[0] !== 0xff || binary[1] !== 0xd8 || binary[2] !== 0xff ||
           binary[binary.length - 2] !== 0xff || binary[binary.length - 1] !== 0xd9) {
-        return json({ error: "File bukan gambar JPEG yang valid atau ukurannya melebihi 8 MB." }, 400);
+        return json({ error: "File bukan gambar JPEG yang valid. Silakan crop ulang." }, 400);
       }
       const path = Date.now() + "-" + crypto.randomUUID() + "-" + fileName;
-      const { error } = await db.storage.from("ivory-public").upload(path, binary, {
-        contentType: mime,
-        upsert: false,
+      const { error: storageError } = await db.storage.from("ivory-public").upload(path, binary, {
+        contentType: mime, cacheControl: "31536000", upsert: false,
       });
-      if (error) throw error;
+      if (storageError) {
+        console.error("Ivory media upload failed:", storageError.message);
+        return json({ error: "Storage menolak foto. Pastikan ukuran akhir maksimal 8 MB, lalu coba lagi." }, 502);
+      }
       const { data } = db.storage.from("ivory-public").getPublicUrl(path);
       return json({ path, url: data.publicUrl });
     }

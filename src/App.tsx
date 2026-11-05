@@ -77,7 +77,20 @@ function App(){
  const orderNow=()=>{if(!selectedService||!selectedStaff)return;const raw=(selectedStaff.whatsapp_number||'').replace(/\D/g,'');const number=raw.startsWith('62')?raw:raw.startsWith('0')?'62'+raw.slice(1):raw;if(number.length<10){setNotice('Nomor WhatsApp staf belum diatur dengan benar.');return}const lines=['Halo, saya ingin melakukan order melalui Ivory Diary.','Layanan: '+selectedService.title,'Pilihan: '+(tier||selectedService.price_label),...(selectedService.pricing_type==='per_unit'?['Jumlah: '+quantity+' '+(selectedService.unit_label||'')]:[]),...(estimate!==null?['Estimasi Harga: '+money(estimate)]:[]),'','Saya ingin berkonsultasi lebih lanjut mengenai kebutuhan saya.'];window.open('https://wa.me/'+number+'?text='+encodeURIComponent(lines.join('\n')),'_blank','noopener,noreferrer')};
  const login=async(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();setLoginBusy(true);setLoginError('');try{const response=await fetch(ADMIN_URL+'?action=login',{method:'POST',headers:{'Content-Type':'application/json','apikey':import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY||import.meta.env.VITE_SUPABASE_ANON_KEY||''},body:JSON.stringify({username:loginName,password:loginPass})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Login gagal. Periksa kembali kredensial Anda.');sessionStorage.setItem('ivory-owner-token',data.token);setToken(data.token);setOwner(data.owner);setLoginPass('');navigate('/owner')}catch(e:any){setLoginError(e.message||'Login gagal.')}finally{setLoginBusy(false)}};
  const logout=async()=>{try{await adminRequest(token,'logout')}catch{}sessionStorage.removeItem('ivory-owner-token');setToken('');setOwner(null);navigate('/')};
- const uploadImage=async(file:File)=>{if(file.type!=='image/jpeg')throw new Error('Hasil crop harus berupa JPEG.');if(file.size>8*1024*1024)throw new Error('Ukuran gambar maksimal 8 MB.');const base64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=()=>reject(new Error('Gambar tidak dapat dibaca.'));reader.readAsDataURL(file)});return adminRequest<{path:string;url:string}>(token,'upload',{fileName:file.name,contentType:file.type,base64})};
+ const uploadImage=async(file:File)=>{
+  if(file.type!=='image/jpeg')throw new Error('Hasil crop harus berupa JPEG.');
+  if(file.size>8*1024*1024)throw new Error('Ukuran gambar maksimal 8 MB.');
+  if(!token)throw new Error('Sesi Owner tidak ditemukan. Silakan login kembali.');
+  const form=new FormData();form.append('file',file,file.name);form.append('fileName',file.name);
+  const headers:Record<string,string>={Authorization:`Bearer ${token}`};
+  const publicKey=import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY||import.meta.env.VITE_SUPABASE_ANON_KEY||'';
+  if(publicKey)headers.apikey=publicKey;
+  const response=await fetch(ADMIN_URL+'?action=upload',{method:'POST',headers,body:form});
+  const result=await response.json().catch(()=>({error:'Respons server upload tidak valid.'}));
+  if(!response.ok)throw new Error(result.error||'Upload foto gagal. Silakan coba lagi.');
+  if(typeof result.url!=='string'||typeof result.path!=='string')throw new Error('Server tidak mengembalikan alamat foto yang valid.');
+  return result as {path:string;url:string};
+};
  const beginNew=()=>{const data:Record<AdminTab,Record<string,any>>={
  services:{slug:'',category:'battle-boarding',title:'',description:'',details:'',pricing_type:'fixed',price_label:'',base_price:null,unit_label:'',options:[],is_active:true,sort_order:0},
  testimonials:{service_slug:'',category:'battle-boarding',description:'',work_date:new Date().toISOString().slice(0,10),image_paths:[],image_urls:[],is_published:true,sort_order:0},
@@ -86,7 +99,20 @@ function App(){
  const saveAdmin=async()=>{if(!editing)return;setSaving(true);try{const values={...editing};delete values.id;delete values.created_at;delete values.updated_at;if(editing.id||(adminTab==='site_content'&&adminRows.some(row=>row.key===editing.key)))await adminRequest(token,'update',{table:adminTab,id:editing.id,values},'PATCH');else await adminRequest(token,'create',{table:adminTab,values});setEditing(null);setNotice('Perubahan berhasil disimpan.');await fetchAdmin(adminTab);await refreshPublicContent()}catch(e:any){setNotice(e.message||'Perubahan gagal disimpan.')}finally{setSaving(false)}};
  const deleteAdmin=async(row:Record<string,any>)=>{if(!window.confirm('Hapus konten ini? Tindakan ini tidak dapat dibatalkan.'))return;try{await adminRequest(token,'delete',{table:adminTab,id:row.id},'DELETE');setNotice('Konten berhasil dihapus.');await fetchAdmin(adminTab);await refreshPublicContent()}catch(e:any){setNotice(e.message||'Konten gagal dihapus.')}};
  const updateField=(key:string,value:any)=>setEditing(current=>current?({...current,[key]:value}):current);
- const finishCrop=async(file:File)=>{if(!cropTarget)return;setCropBusy(true);try{const uploaded=await uploadImage(file);if(cropTarget==='photo_path')updateField('photo_path',uploaded.url);else{updateField('image_urls',[...(editing?.image_urls||[]),uploaded.url]);updateField('image_paths',[...(editing?.image_paths||[]),uploaded.path])}setCropFile(null);setCropTarget(null);setNotice('Foto berhasil dipotong dan diunggah.')}catch(e:any){setNotice(e.message||'Upload gagal.')}finally{setCropBusy(false)}};
+ const finishCrop=async(file:File)=>{
+  if(!cropTarget)throw new Error('Tujuan upload foto tidak ditemukan.');
+  setCropBusy(true);
+  try{
+   const uploaded=await uploadImage(file);
+   if(cropTarget==='photo_path')updateField('photo_path',uploaded.url);
+   else{
+    updateField('image_urls',[...(editing?.image_urls||[]),uploaded.url]);
+    updateField('image_paths',[...(editing?.image_paths||[]),uploaded.path]);
+   }
+   setCropFile(null);setCropTarget(null);
+   setNotice(cropTarget==='photo_path'?'Foto Staff berhasil diunggah.':'Foto Testimoni berhasil ditambahkan.');
+  }finally{setCropBusy(false)}
+};
  const removeImage=(index:number)=>{if(!editing)return;updateField('image_urls',(editing.image_urls||[]).filter((_:string,i:number)=>i!==index));updateField('image_paths',(editing.image_paths||[]).filter((_:string,i:number)=>i!==index))};
  const page=path==='/'?'home':path==='/layanan'?'services':path==='/testimoni'?'testimonials':path==='/staff'?'staff':'not-found';
  const navigate=(to:string)=>{const next=to.replace(new RegExp('/+$'),'')||'/';if(next!==path){window.history.pushState({},'',next);setPath(next)}setMenuOpen(false);setModal(null);window.scrollTo({top:0,behavior:'smooth'})};

@@ -19,6 +19,17 @@ Website katalog layanan dan komunitas Ivory Diary. Dibangun menggunakan React, T
 
 Folder `supabase/migrations` menyimpan skema, indeks, dan kebijakan akses yang diterapkan pada project.
 
+## Halaman publik dan tautan berbagi
+
+Website menggunakan empat route terpisah:
+
+- `/` — Beranda
+- `/layanan` — Katalog dan order layanan
+- `/testimoni` — Galeri hasil pekerjaan
+- `/staff` — Profil staf
+
+Konfigurasi `vercel.json` mengarahkan direct URL dan refresh halaman ke aplikasi Vite. Metadata Open Graph dan Twitter berada di `index.html`; gambar share 1200×630 berada di `public/og-ivory-diary.png`. Jika Vercel terhubung ke GitHub, perubahan branch `main` perlu dipublikasikan melalui deployment terbaru. Platform pesan dapat menyimpan cache preview lama untuk sementara.
+
 ## Akun Owner
 
 Akun Owner hanya dibuat melalui SQL Editor Supabase. File `supabase/owner-setup.sql` adalah template dengan placeholder, bukan password. Jangan menyimpan password asli di Git. Gunakan password unik dan panjang.

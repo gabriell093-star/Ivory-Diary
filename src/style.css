@@ -433,3 +433,147 @@
 /* Crop dialog is shared by Owner media fields; keep it above the admin shell. */
 .crop-backdrop{z-index:9999}
 .crop-dialog{position:relative;z-index:10000}
+
+
+/* Staff profile modal: constrain the image independently from its text. */
+#root .modal.staff-modal{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:0;
+  min-width:0;
+}
+#root .modal.staff-modal .staff-detail-image{
+  display:block;
+  position:relative;
+  flex:0 0 auto;
+  width:100%;
+  height:auto;
+  max-height:none;
+  min-height:0;
+  margin:22px 0 0;
+  padding:0;
+  overflow:visible;
+  background:transparent;
+}
+#root .modal.staff-modal .staff-detail-image-frame{
+  display:block;
+  position:relative;
+  width:100%;
+  height:auto;
+  aspect-ratio:4 / 5;
+  max-height:min(52vh,420px);
+  min-height:180px;
+  overflow:hidden;
+  isolation:isolate;
+  background:var(--red-soft);
+}
+#root .modal.staff-modal .staff-detail-image-frame>img,
+#root .modal.staff-modal .staff-detail-image-frame>.portrait-fallback{
+  position:absolute;
+  inset:0;
+  display:block;
+  width:100%;
+  height:100%;
+  min-width:0;
+  min-height:0;
+  max-width:none;
+  margin:0;
+  object-fit:cover;
+  object-position:center 35%;
+}
+#root .modal.staff-modal .staff-detail-image-frame>.portrait-fallback{
+  display:grid;
+  place-items:center;
+}
+#root .modal.staff-modal .staff-profile-copy{
+  display:block;
+  position:static;
+  flex:0 0 auto;
+  width:100%;
+  min-width:0;
+  height:auto;
+  margin:0;
+  padding:22px 0 0;
+  overflow:visible;
+  background:transparent;
+}
+#root .modal.staff-modal .staff-profile-copy>h2{
+  display:block;
+  position:static;
+  width:auto;
+  height:auto;
+  margin:0 0 12px;
+  padding:0;
+  line-height:.98;
+  overflow-wrap:anywhere;
+}
+#root .modal.staff-modal .staff-profile-copy>p{
+  display:block;
+  position:static;
+  width:auto;
+  max-width:none;
+  height:auto;
+  margin:0 0 22px;
+  padding:0;
+  line-height:1.85;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+#root .modal.staff-modal>.button{flex:0 0 auto;margin-top:0}
+
+/* Consistent section-number and section-title alignment on mobile. */
+#root .section-heading .section-kicker,
+#root .intro>.section-kicker,
+#root .closing>.section-kicker{
+  display:grid;
+  grid-template-columns:28px max-content;
+  align-items:center;
+  justify-content:start;
+  column-gap:13px;
+  width:max-content;
+  max-width:100%;
+  min-width:0;
+  margin:0;
+  padding:0;
+  line-height:1.25;
+}
+#root .section-kicker>span:first-child{
+  display:block;
+  width:28px;
+  flex:none;
+  margin:0;
+  padding:0;
+  color:var(--red);
+  font-size:10px;
+  line-height:1.25;
+  letter-spacing:.12em;
+  text-align:left;
+  white-space:nowrap;
+}
+#root .section-kicker>span:nth-child(2){
+  display:block;
+  min-width:0;
+  margin:0;
+  padding:0;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.25;
+  letter-spacing:.16em;
+  font-weight:800;
+  white-space:nowrap;
+}
+#root .section-heading{min-width:0}
+@media(max-width:640px){
+  #root .modal.staff-modal{padding:20px;max-height:calc(100dvh - 24px)}
+  #root .modal.staff-modal .staff-detail-image-frame{
+    aspect-ratio:4 / 5;
+    max-height:52dvh;
+    min-height:160px;
+  }
+  #root .modal.staff-modal .staff-profile-copy{padding-top:18px}
+  #root .section-heading .section-kicker,
+  #root .intro>.section-kicker,
+  #root .closing>.section-kicker{column-gap:11px}
+  #root .section-kicker>span:nth-child(2){font-size:8px;letter-spacing:.14em}
+}

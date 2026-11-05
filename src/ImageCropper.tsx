@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 
-type Props = { file: File; onCancel: () => void; onComplete: (file: File) => Promise<void> | void; busy?: boolean };
+type Props = { file: File; onCancel: () => void; onComplete: (file: File) => Promise<void> | void; busy?: boolean; aspectRatio?: number };
 
-export default function ImageCropper({ file, onCancel, onComplete, busy = false }: Props) {
+export default function ImageCropper({ file, onCancel, onComplete, busy = false, aspectRatio }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
@@ -13,11 +13,37 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false 
   useEffect(() => {
     const url = URL.createObjectURL(file);
     const image = new Image();
-    image.onload = () => { imageRef.current = image; draw(null); };
+    image.onload = () => {
+      imageRef.current = image;
+      draw(null);
+      const canvas = canvasRef.current;
+      if (!canvas || !image.naturalWidth || !image.naturalHeight) return;
+      const scale = Math.min(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      const x = (canvas.width - width) / 2;
+      const y = (canvas.height - height) / 2;
+      const ratio = aspectRatio && Number.isFinite(aspectRatio) && aspectRatio > 0
+        ? aspectRatio
+        : width / height;
+      let cropWidth = Math.min(width * 0.9, height * 0.9 * ratio);
+      let cropHeight = cropWidth / ratio;
+      if (cropHeight > height * 0.9) {
+        cropHeight = height * 0.9;
+        cropWidth = cropHeight * ratio;
+      }
+      setSelection({
+        x: x + (width - cropWidth) / 2,
+        y: y + (height - cropHeight) / 2,
+        w: cropWidth,
+        h: cropHeight,
+      });
+      setError('');
+    };
     image.onerror = () => setError('Foto tidak dapat dibuka. Coba file JPG, PNG, atau WebP lain.');
     image.src = url;
     return () => { URL.revokeObjectURL(url); imageRef.current = null; };
-  }, [file]);
+  }, [file, aspectRatio]);
 
   const draw = (rect: typeof selection) => {
     const canvas = canvasRef.current;
@@ -110,10 +136,10 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false 
   return <div className="crop-backdrop" role="dialog" aria-modal="true" aria-label="Potong foto">
     <section className="crop-dialog">
       <div className="crop-heading"><div><span className="eyebrow">IMAGE / EDIT</span><h2>Atur potongan foto</h2></div><button type="button" onClick={onCancel} disabled={busy} aria-label="Tutup">×</button></div>
-      <p className="crop-instruction">Sentuh lalu tarik pada foto untuk memilih area crop. Ukuran dan rasio bebas. Jika tidak memilih area, foto digunakan utuh.</p>
+      <p className="crop-instruction">Area crop sudah disiapkan otomatis. Sentuh dan tarik untuk menyesuaikannya sebelum foto dipakai.</p>
       <canvas ref={canvasRef} width={640} height={440} className="crop-canvas" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}/>
       {error && <p className="error-text">{error}</p>}
-      <div className="crop-actions"><button className="button secondary" type="button" onClick={() => { setSelection(null); setError(''); }} disabled={busy}>Reset pilihan</button><button className="button primary" type="button" onClick={crop} disabled={busy || !display}>{busy ? 'Memproses…' : 'Gunakan foto'}</button></div>
+      <div className="crop-actions"><button className="button secondary" type="button" onClick={() => { setSelection(null); setError(''); }} disabled={busy}>Gunakan seluruh foto</button><button className="button primary" type="button" onClick={crop} disabled={busy || !display}>{busy ? 'Memproses…' : 'Gunakan foto'}</button></div>
     </section>
   </div>;
 }

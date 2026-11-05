@@ -4,7 +4,7 @@ type Rect = { x: number; y: number; w: number; h: number };
 type Point = { x: number; y: number };
 type Corner = 'nw' | 'ne' | 'sw' | 'se';
 type Gesture = { mode: 'move' | 'resize' | 'draw'; start: Point; original: Rect; corner?: Corner; anchor?: Point };
-type Preset = 'original' | 'square' | 'portrait' | 'landscape';
+type Preset = 'original' | 'square' | 'portrait' | 'portraitThreeFour' | 'landscape' | 'landscapeFourThree';
 type Props = {
   file: File;
   onCancel: () => void;
@@ -17,6 +17,8 @@ const presetNames: Record<Preset, string> = {
   original: 'Asli',
   square: '1 : 1',
   portrait: '4 : 5',
+  portraitThreeFour: '3 : 4',
+  landscapeFourThree: '4 : 3',
   landscape: '16 : 9',
 };
 
@@ -34,6 +36,8 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
   const ratioForPreset = (value: Preset, originalRatio: number) => {
     if (value === 'square') return 1;
     if (value === 'portrait') return 4 / 5;
+    if (value === 'portraitThreeFour') return 3 / 4;
+    if (value === 'landscapeFourThree') return 4 / 3;
     if (value === 'landscape') return 16 / 9;
     return originalRatio;
   };
@@ -259,6 +263,39 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
 
   const onUp = () => { gestureRef.current = null; };
 
+  const nudgeSelection = (horizontal: number, vertical: number) => {
+    if (!display || !selection) return;
+    const stepX = display.w * 0.025;
+    const stepY = display.h * 0.025;
+    setSelection({
+      ...selection,
+      x: Math.max(display.x, Math.min(display.x + display.w - selection.w, selection.x + horizontal * stepX)),
+      y: Math.max(display.y, Math.min(display.y + display.h - selection.h, selection.y + vertical * stepY)),
+    });
+  };
+
+  const setManualDimension = (axis: 'width' | 'height', percent: number) => {
+    if (!display || !selection) return;
+    const nextSize = (axis === 'width' ? display.w : display.h) * Math.max(15, Math.min(100, percent)) / 100;
+    if (axis === 'width') {
+      const center = selection.x + selection.w / 2;
+      const width = Math.min(display.w, nextSize);
+      setSelection({
+        ...selection,
+        x: Math.max(display.x, Math.min(display.x + display.w - width, center - width / 2)),
+        w: width,
+      });
+    } else {
+      const center = selection.y + selection.h / 2;
+      const height = Math.min(display.h, nextSize);
+      setSelection({
+        ...selection,
+        y: Math.max(display.y, Math.min(display.y + display.h - height, center - height / 2)),
+        h: height,
+      });
+    }
+  };
+
   const changePreset = (value: Preset) => {
     setPreset(value);
     setMode('automatic');
@@ -347,7 +384,7 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
 
       {mode === 'automatic' ? (
         <div className="crop-preset-row">
-          {(['original', 'square', 'portrait', 'landscape'] as Preset[]).map(item => (
+          {(['original', 'square', 'portraitThreeFour', 'portrait', 'landscapeFourThree', 'landscape'] as Preset[]).map(item => (
             <button type="button" key={item} className={preset === item ? 'active' : ''} onClick={() => changePreset(item)} disabled={busy}>
               {presetNames[item]}
             </button>
@@ -355,7 +392,7 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
         </div>
       ) : (
         <div className="crop-manual-note">
-          Mode manual: seret bingkai untuk memindahkannya. Tarik sudut untuk mengubah lebar dan tinggi secara bebas.
+          Atur posisi dengan tombol arah dan ubah lebar atau tinggi menggunakan slider. Anda juga tetap bisa menggeser bingkai pada foto.
         </div>
       )}
 
@@ -378,6 +415,37 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
           onLostPointerCapture={onUp}
         />
       </div>
+      {mode === 'manual' && display && selection && (
+        <div className="crop-manual-controls">
+          <div className="crop-position-controls">
+            <div>
+              <b>POSISI AREA CROP</b>
+              <span>Geser sedikit demi sedikit tanpa menarik foto.</span>
+            </div>
+            <div className="crop-direction-pad" aria-label="Kontrol posisi crop">
+              <span />
+              <button type="button" aria-label="Geser ke atas" onClick={() => nudgeSelection(0, -1)} disabled={busy}>↑</button>
+              <span />
+              <button type="button" aria-label="Geser ke kiri" onClick={() => nudgeSelection(-1, 0)} disabled={busy}>←</button>
+              <button type="button" className="crop-direction-center" onClick={reset} disabled={busy} aria-label="Atur ulang posisi">•</button>
+              <button type="button" aria-label="Geser ke kanan" onClick={() => nudgeSelection(1, 0)} disabled={busy}>→</button>
+              <span />
+              <button type="button" aria-label="Geser ke bawah" onClick={() => nudgeSelection(0, 1)} disabled={busy}>↓</button>
+              <span />
+            </div>
+          </div>
+          <div className="crop-size-controls">
+            <label>
+              <span><b>Lebar area</b><output>{Math.round(selection.w / display.w * 100)}%</output></span>
+              <input type="range" min="15" max="100" step="1" value={Math.max(15,Math.min(100,Math.round(selection.w / display.w * 100)))} onChange={event => setManualDimension('width', Number(event.target.value))} disabled={busy}/>
+            </label>
+            <label>
+              <span><b>Tinggi area</b><output>{Math.round(selection.h / display.h * 100)}%</output></span>
+              <input type="range" min="15" max="100" step="1" value={Math.max(15,Math.min(100,Math.round(selection.h / display.h * 100)))} onChange={event => setManualDimension('height', Number(event.target.value))} disabled={busy}/>
+            </label>
+          </div>
+        </div>
+      )}
       {error && <p className="crop-error" role="alert">{error}</p>}
 
       <div className="crop-editor-actions">

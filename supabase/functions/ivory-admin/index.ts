@@ -81,6 +81,43 @@ async function readJsonBody(req: Request, maxBytes: number): Promise<Record<stri
   return parsed as Record<string, unknown>;
 }
 
+async function readBoundedFormData(req: Request, maxBytes: number): Promise<FormData> {
+  const declaredLength = Number(req.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new RequestBodyError("Ukuran permintaan terlalu besar.", 413);
+  }
+  if (!req.body) throw new RequestBodyError("Isi upload tidak ditemukan.", 400);
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        throw new RequestBodyError("Ukuran permintaan terlalu besar.", 413);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return await new Request(req.url, { method: req.method, headers: req.headers, body: bytes }).formData();
+  } catch {
+    throw new RequestBodyError("Format form upload tidak valid.", 400);
+  }
+}
+
 async function sha256(value: string) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -153,7 +190,7 @@ const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = 
     service_slug: v => typeof v === "string" && v.length <= 120,
     category: v => ["battle-boarding", "debat-konvensional", "akademis"].includes(String(v)),
     description: v => typeof v === "string" && v.length <= 4000,
-    work_date: v => typeof v === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")),
+    work_date: v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")),
     image_paths: v => Array.isArray(v) && v.length <= 20 && v.every(path => safeStoragePath(path) !== null),
     image_urls: v => Array.isArray(v) && v.length <= 20 && v.every(url => storagePathFromPublicUrl(url) !== null),
     is_published: v => typeof v === "boolean",
@@ -179,10 +216,20 @@ function validateValues(table: string, raw: unknown): Record<string, unknown> {
     }
   }
   if (table === "testimonials") {
+    const hasPaths = Object.prototype.hasOwnProperty.call(raw, "image_paths");
+    const hasUrls = Object.prototype.hasOwnProperty.call(raw, "image_urls");
+    if (hasPaths !== hasUrls) {
+      throw new RequestBodyError("Daftar foto testimoni harus dikirim secara berpasangan.", 400);
+    }
     const paths = raw.image_paths;
     const urls = raw.image_urls;
-    if (Array.isArray(paths) && Array.isArray(urls) && paths.length !== urls.length) {
-      throw new RequestBodyError("Daftar foto testimoni tidak sinkron.", 400);
+    if (Array.isArray(paths) && Array.isArray(urls)) {
+      if (paths.length !== urls.length) throw new RequestBodyError("Daftar foto testimoni tidak sinkron.", 400);
+      for (let i = 0; i < paths.length; i++) {
+        if (safeStoragePath(paths[i]) !== storagePathFromPublicUrl(urls[i])) {
+          throw new RequestBodyError("Pasangan alamat foto testimoni tidak cocok.", 400);
+        }
+      }
     }
   }
   return raw;
@@ -286,10 +333,15 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "change-password" && req.method === "POST") {
+      const currentPassword = String(body.currentPassword || "");
+      const newPassword = String(body.newPassword || "");
+      if (currentPassword.length > 200 || newPassword.length < 12 || newPassword.length > 200) {
+        return respond({ error: "Kata sandi baru harus 12–200 karakter." }, 400);
+      }
       const { data, error } = await db.rpc("change_owner_password", {
         p_owner_id: session.owner_id,
-        p_current_password: String(body.currentPassword || ""),
-        p_new_password: String(body.newPassword || ""),
+        p_current_password: currentPassword,
+        p_new_password: newPassword,
       });
       if (error) throw error;
       if (!data) return respond({ error: "Kata sandi saat ini salah atau kata sandi baru belum memenuhi 12 karakter." }, 400);
@@ -305,8 +357,11 @@ Deno.serve(async (req: Request) => {
         return respond({ error: "Ukuran foto terlalu besar. Maksimal 8 MB setelah crop." }, 413);
       }
       let form: FormData;
-      try { form = await req.formData(); }
-      catch { return respond({ error: "Form upload tidak valid. Silakan pilih ulang fotonya." }, 400); }
+      try { form = await readBoundedFormData(req, maxFileBytes + 128 * 1024); }
+      catch (error) {
+        if (error instanceof RequestBodyError) return respond({ error: error.message }, error.status);
+        return respond({ error: "Form upload tidak valid. Silakan pilih ulang fotonya." }, 400);
+      }
       const uploadedFile = form.get("file");
       if (!(uploadedFile instanceof File)) return respond({ error: "File foto tidak ditemukan pada permintaan upload." }, 400);
       const fileName = String(form.get("fileName") || uploadedFile.name || "ivory-photo.jpg")

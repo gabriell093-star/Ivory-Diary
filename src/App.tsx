@@ -36,7 +36,9 @@ function App(){
  const [modal,setModal]=useState<'order'|'staff'|'login'|'gallery'|null>(null);const [selectedService,setSelectedService]=useState<Service|null>(null);const [selectedStaff,setSelectedStaff]=useState<Staff|null>(null);const [selectedTestimonial,setSelectedTestimonial]=useState<Testimonial|null>(null);const [galleryIndex,setGalleryIndex]=useState(0);const [touchStart,setTouchStart]=useState<number|null>(null);
  const [quantity,setQuantity]=useState(1);const [tier,setTier]=useState('');const [loginName,setLoginName]=useState('');const [loginPass,setLoginPass]=useState('');const [loginError,setLoginError]=useState('');const [loginBusy,setLoginBusy]=useState(false);
  const [token,setToken]=useState(()=>sessionStorage.getItem('ivory-owner-token')||'');const [owner,setOwner]=useState<Owner|null>(null);const [adminTab,setAdminTab]=useState<AdminTab>('services');const [adminRows,setAdminRows]=useState<Record<string,any>[]>([]);const [editing,setEditing]=useState<Record<string,any>|null>(null);const [saving,setSaving]=useState(false);const [notice,setNotice]=useState('');
- useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('ivory-theme',theme)},[theme]);
+ useEffect(()=>{document.documentElement.dataset.theme=theme},[theme]);
+ useEffect(()=>{if(localStorage.getItem('ivory-theme'))return;const media=window.matchMedia('(prefers-color-scheme: dark)');const update=()=>{if(!localStorage.getItem('ivory-theme'))setTheme(media.matches?'dark':'light')};media.addEventListener('change',update);return()=>media.removeEventListener('change',update)},[]);
+ const toggleTheme=()=>{const next=theme==='light'?'dark':'light';localStorage.setItem('ivory-theme',next);setTheme(next)};
  useEffect(()=>{let active=true;(async()=>{if(!supabase){setLoadError(true);return}const [s,st,t,c]=await Promise.all([
   supabase.from('services').select('*').eq('is_active',true).order('sort_order'),
   supabase.from('staff').select('*').eq('is_visible',true).order('sort_order'),
@@ -98,7 +100,7 @@ function App(){
  return <div id="top" className="site-shell">
   <header className="navbar"><a className="brand" href="#top" onClick={e=>{e.preventDefault();scrollTo('top')}}><img src="/logo.svg" alt="Ivory Diary"/></a>
    <nav className={menuOpen?'nav-links open':'nav-links'}><button onClick={()=>scrollTo('top')}>Beranda</button><button onClick={()=>scrollTo('services')}>Layanan</button><button onClick={()=>scrollTo('testimonials')}>Testimoni</button><button onClick={()=>scrollTo('staff')}>Staff</button></nav>
-   <div className="nav-actions"><IconButton label="Ganti tema" onClick={()=>setTheme(theme==='light'?'dark':'light')}>{theme==='light'?<Moon size={17}/>:<Sun size={17}/>}</IconButton><button className="button primary nav-cta" onClick={()=>services[0]&&openOrder(services[0])}>Order sekarang <ArrowUpRight size={15}/></button><button className="icon-button mobile-menu" type="button" aria-label="Menu" onClick={()=>setMenuOpen(!menuOpen)}><Menu size={18}/></button></div>
+   <div className="nav-actions"><IconButton label="Ganti tema" onClick={toggleTheme}>{theme==='light'?<Moon size={17}/>:<Sun size={17}/>}</IconButton><button className="button primary nav-cta" onClick={()=>services[0]&&openOrder(services[0])}>Order sekarang <ArrowUpRight size={15}/></button><button className="icon-button mobile-menu" type="button" aria-label="Menu" onClick={()=>setMenuOpen(!menuOpen)}><Menu size={18}/></button></div>
   </header>
   <main>
    {loadError&&<div className="load-note">Sebagian konten belum dapat dimuat. Informasi dasar tetap tersedia; periksa konfigurasi Supabase bila masalah berlanjut.</div>}

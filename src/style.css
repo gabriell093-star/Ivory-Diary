@@ -577,3 +577,34 @@
   #root .closing>.section-kicker{column-gap:11px}
   #root .section-kicker>span:nth-child(2){font-size:8px;letter-spacing:.14em}
 }
+
+
+/* Section markers: compact, consistent number-to-label spacing. */
+#root .section-kicker{
+  display:inline-flex;
+  flex-direction:row;
+  flex-wrap:nowrap;
+  align-items:center;
+  justify-content:flex-start;
+  gap:12px;
+  width:fit-content;
+  max-width:100%;
+  min-width:0;
+}
+#root .section-kicker>span:first-child{
+  display:inline-block;
+  flex:0 0 auto;
+  width:auto;
+  min-width:0;
+  text-align:left;
+}
+#root .section-kicker>span:nth-child(2){
+  display:inline-block;
+  flex:0 1 auto;
+  min-width:0;
+  white-space:nowrap;
+}
+@media(max-width:640px){
+  #root .section-kicker{gap:10px}
+  #root .section-kicker>span:nth-child(2){font-size:8px;letter-spacing:.13em}
+}

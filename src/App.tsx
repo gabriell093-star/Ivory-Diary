@@ -49,6 +49,26 @@ function App(){
  ]);if(!active)return;if([s,st,t,c].some(x=>x.error))setLoadError(true);if(s.data)setServices(s.data as Service[]);if(st.data)setStaff(st.data as Staff[]);if(t.data)setTestimonials(t.data as Testimonial[]);if(c.data)setSiteCopy(Object.fromEntries(c.data.map((x:any)=>[x.key,x.value])));})().catch(e=>{console.error(e);if(active)setLoadError(true)});return()=>{active=false}},[]);
  useEffect(()=>{if(!token)return;adminRequest<{owner:Owner}>(token,'me',{},'GET').then(x=>setOwner(x.owner)).catch(()=>{sessionStorage.removeItem('ivory-owner-token');setToken('')})},[token]);
  const fetchAdmin=async(tab:AdminTab)=>{setAdminTab(tab);try{const result=await adminRequest<{data:Record<string,any>[]}>(token,'list&table='+encodeURIComponent(tab),{},'GET');setAdminRows(result.data||[]);setNotice('')}catch(e:any){setNotice(e.message||'Gagal memuat data.')}};
+ const refreshPublicContent=async()=>{
+  if(!supabase)return;
+  try{
+   const [serviceResult,staffResult,testimonialResult,contentResult]=await Promise.all([
+    supabase.from('services').select('*').eq('is_active',true).order('sort_order'),
+    supabase.from('staff').select('*').eq('is_visible',true).order('sort_order'),
+    supabase.from('testimonials').select('*').eq('is_published',true).order('work_date',{ascending:false}),
+    supabase.from('site_content').select('*')
+   ]);
+   if(serviceResult.error||staffResult.error||testimonialResult.error||contentResult.error)throw new Error('Konten publik belum dapat diperbarui.');
+   setServices((serviceResult.data||[]) as Service[]);
+   setStaff((staffResult.data||[]) as Staff[]);
+   setTestimonials((testimonialResult.data||[]) as Testimonial[]);
+   setSiteCopy(Object.fromEntries((contentResult.data||[]).map((item:any)=>[item.key,item.value])));
+   setLoadError(false);
+  }catch{
+   setLoadError(true);
+   setNotice('Data tersimpan, tetapi halaman publik belum berhasil diperbarui. Silakan muat ulang halaman.');
+  }
+ };
  useEffect(()=>{if(owner&&token)void fetchAdmin('services')},[owner,token]);
  const groups=useMemo(()=>['battle-boarding','debat-konvensional','akademis'].map(key=>({key,label:categoryLabels[key],items:services.filter(s=>s.category===key)})),[services]);
  const openOrder=(service:Service,person?:Staff|null)=>{setSelectedService(service);setSelectedStaff(person||null);setQuantity(1);setTier(service.options?.[0]?.label||'');setModal('order')};
@@ -63,8 +83,8 @@ function App(){
  testimonials:{service_slug:'',category:'battle-boarding',description:'',work_date:new Date().toISOString().slice(0,10),image_paths:[],image_urls:[],is_published:true,sort_order:0},
  staff:{slug:'',name:'',summary:'',bio:'',whatsapp_number:'',photo_path:null,is_visible:true,is_detailed:true,sort_order:0},
  site_content:{key:'',value:''}};setEditing(data[adminTab])};
- const saveAdmin=async()=>{if(!editing)return;setSaving(true);try{const values={...editing};delete values.id;delete values.created_at;delete values.updated_at;if(editing.id||(adminTab==='site_content'&&adminRows.some(row=>row.key===editing.key)))await adminRequest(token,'update',{table:adminTab,id:editing.id,values},'PATCH');else await adminRequest(token,'create',{table:adminTab,values});setEditing(null);setNotice('Perubahan berhasil disimpan.');await fetchAdmin(adminTab)}catch(e:any){setNotice(e.message||'Perubahan gagal disimpan.')}finally{setSaving(false)}};
- const deleteAdmin=async(row:Record<string,any>)=>{if(!window.confirm('Hapus konten ini? Tindakan ini tidak dapat dibatalkan.'))return;try{await adminRequest(token,'delete',{table:adminTab,id:row.id},'DELETE');setNotice('Konten berhasil dihapus.');await fetchAdmin(adminTab)}catch(e:any){setNotice(e.message||'Konten gagal dihapus.')}};
+ const saveAdmin=async()=>{if(!editing)return;setSaving(true);try{const values={...editing};delete values.id;delete values.created_at;delete values.updated_at;if(editing.id||(adminTab==='site_content'&&adminRows.some(row=>row.key===editing.key)))await adminRequest(token,'update',{table:adminTab,id:editing.id,values},'PATCH');else await adminRequest(token,'create',{table:adminTab,values});setEditing(null);setNotice('Perubahan berhasil disimpan.');await fetchAdmin(adminTab);await refreshPublicContent()}catch(e:any){setNotice(e.message||'Perubahan gagal disimpan.')}finally{setSaving(false)}};
+ const deleteAdmin=async(row:Record<string,any>)=>{if(!window.confirm('Hapus konten ini? Tindakan ini tidak dapat dibatalkan.'))return;try{await adminRequest(token,'delete',{table:adminTab,id:row.id},'DELETE');setNotice('Konten berhasil dihapus.');await fetchAdmin(adminTab);await refreshPublicContent()}catch(e:any){setNotice(e.message||'Konten gagal dihapus.')}};
  const updateField=(key:string,value:any)=>setEditing(current=>current?({...current,[key]:value}):current);
  const finishCrop=async(file:File)=>{if(!cropTarget)return;setCropBusy(true);try{const uploaded=await uploadImage(file);if(cropTarget==='photo_path')updateField('photo_path',uploaded.url);else{updateField('image_urls',[...(editing?.image_urls||[]),uploaded.url]);updateField('image_paths',[...(editing?.image_paths||[]),uploaded.path])}setCropFile(null);setCropTarget(null);setNotice('Foto berhasil dipotong dan diunggah.')}catch(e:any){setNotice(e.message||'Upload gagal.')}finally{setCropBusy(false)}};
  const removeImage=(index:number)=>{if(!editing)return;updateField('image_urls',(editing.image_urls||[]).filter((_:string,i:number)=>i!==index));updateField('image_paths',(editing.image_paths||[]).filter((_:string,i:number)=>i!==index))};

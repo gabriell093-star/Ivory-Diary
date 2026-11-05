@@ -135,8 +135,9 @@ Deno.serve(async (req: Request) => {
 
     const tokenHash = await sha256(token);
     const { data: sessions, error: sessionError } = await db.from("owner_sessions")
-      .select("id, owner_id, expires_at, owner_accounts(username, display_name)")
+      .select("id, owner_id, expires_at, owner_accounts!inner(username, display_name, is_active)")
       .eq("token_hash", tokenHash)
+      .eq("owner_accounts.is_active", true)
       .is("revoked_at", null)
       .gt("expires_at", new Date().toISOString())
       .limit(1);

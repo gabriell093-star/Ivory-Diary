@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 
-type Props = { file: File; onCancel: () => void; onComplete: (file: File) => void; busy?: boolean };
+type Props = { file: File; onCancel: () => void; onComplete: (file: File) => Promise<void> | void; busy?: boolean };
 
 export default function ImageCropper({ file, onCancel, onComplete, busy = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -85,16 +85,26 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false 
     const sh = Math.min(image.naturalHeight - sy, valid.h / frame.scale);
     if (sw < 1 || sh < 1) { setError('Area crop terlalu kecil. Pilih area yang lebih besar.'); return; }
     const out = document.createElement('canvas');
-    const factor = Math.min(1, 2000 / Math.max(sw, sh));
+    // Keep output comfortably below the Storage 8 MB limit on mobile devices.
+    const factor = Math.min(1, 1600 / Math.max(sw, sh));
     out.width = Math.max(1, Math.round(sw * factor));
     out.height = Math.max(1, Math.round(sh * factor));
     const ctx = out.getContext('2d');
     if (!ctx) { setError('Browser tidak dapat memproses foto ini.'); return; }
     ctx.drawImage(image, sx, sy, sw, sh, 0, 0, out.width, out.height);
-    out.toBlob(blob => {
+    out.toBlob(async blob => {
       if (!blob) { setError('Gagal membuat hasil crop. Coba lagi.'); return; }
-      onComplete(new File([blob], file.name.replace(/\.[^.]+$/, '') + '-crop.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
-    }, 'image/jpeg', 0.92);
+      if (blob.size > 8 * 1024 * 1024) {
+        setError('Hasil foto masih terlalu besar. Pilih area crop yang lebih kecil lalu coba lagi.');
+        return;
+      }
+      const cropped = new File([blob], file.name.replace(/\.[^.]+$/, '') + '-crop.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+      try {
+        await onComplete(cropped);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Upload gagal. Periksa koneksi lalu coba lagi.');
+      }
+    }, 'image/jpeg', 0.84);
   };
 
   return <div className="crop-backdrop" role="dialog" aria-modal="true" aria-label="Potong foto">

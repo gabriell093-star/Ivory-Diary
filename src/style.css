@@ -90,5 +90,5 @@
  .admin-mobile-nav{display:flex;gap:6px;overflow-x:auto;padding:8px 0 18px;margin-bottom:8px}
  .admin-mobile-nav button{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:10px 12px;font-size:10px;white-space:nowrap}
  .admin-mobile-nav button.active{border-color:var(--red);background:var(--red-soft);color:var(--red);font-weight:800}
- .admin-side .admin-caption,.admin-side>.side-link,.admin-side .side-bottom{display:none}
+ .admin-side .admin-caption,.admin-side .side-bottom{display:none}
 }

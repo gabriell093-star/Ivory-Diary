@@ -314,7 +314,7 @@ export default function ImageCropper({
       }
       const cropped = new File(
         [blob],
-        file.name.replace(/\\.[^.]+$/, '') + '-crop.jpg',
+        file.name.replace(/\.[^.]+$/, '') + '-crop.jpg',
         { type: 'image/jpeg', lastModified: Date.now() },
       );
       try {

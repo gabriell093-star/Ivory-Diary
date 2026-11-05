@@ -1,14 +1,24 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
+const allowedOrigins = new Set([
+  "https://iivory-diary.vercel.app",
+  "https://iivory-diary-nffachys-projects.vercel.app",
+  "https://iivory-diary-git-main-nffachys-projects.vercel.app",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]);
+const corsHeaders = (origin: string | null): Record<string, string> => ({
+  ...(origin && allowedOrigins.has(origin) ? { "Access-Control-Allow-Origin": origin } : {}),
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-};
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  "Vary": "Origin",
+  "X-Content-Type-Options": "nosniff",
+  "Cache-Control": "no-store",
+});
+const json = (body: unknown, status = 200, origin: string | null = null) => new Response(JSON.stringify(body), {
   status,
-  headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" },
+  headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
 });
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -104,8 +114,94 @@ async function removeIvoryMedia(paths: unknown[]) {
   if (error) console.error("Ivory media cleanup failed:", error.message);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = {
+  services: {
+    slug: v => typeof v === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v) && v.length <= 100,
+    category: v => ["battle-boarding", "debat-konvensional", "akademis"].includes(String(v)),
+    title: v => typeof v === "string" && v.trim().length > 0 && v.length <= 160,
+    description: v => typeof v === "string" && v.length <= 1200,
+    details: v => typeof v === "string" && v.length <= 4000,
+    pricing_type: v => ["fixed", "tiered", "per_unit", "range"].includes(String(v)),
+    price_label: v => typeof v === "string" && v.length <= 120,
+    base_price: v => v === null || (Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 1000000000),
+    unit_label: v => v === null || (typeof v === "string" && v.length <= 40),
+    options: v => Array.isArray(v) && v.length <= 30 && v.every(item =>
+      isRecord(item) &&
+      Object.keys(item).every(key => key === "label" || key === "price") &&
+      typeof item.label === "string" && item.label.trim().length > 0 && item.label.length <= 80 &&
+      Number.isSafeInteger(item.price) && Number(item.price) >= 0 && Number(item.price) <= 1000000000
+    ),
+    is_active: v => typeof v === "boolean",
+    sort_order: v => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
+  },
+  staff: {
+    slug: v => typeof v === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v) && v.length <= 100,
+    name: v => typeof v === "string" && v.trim().length > 0 && v.length <= 100,
+    summary: v => typeof v === "string" && v.length <= 500,
+    bio: v => typeof v === "string" && v.length <= 6000,
+    whatsapp_number: v => v === null || (typeof v === "string" && /^[0-9+() .-]{7,30}$/.test(v)),
+    photo_path: v => v === null || storagePathFromPublicUrl(v) !== null,
+    is_visible: v => typeof v === "boolean",
+    is_detailed: v => typeof v === "boolean",
+    sort_order: v => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
+  },
+  testimonials: {
+    service_slug: v => typeof v === "string" && v.length <= 120,
+    category: v => ["battle-boarding", "debat-konvensional", "akademis"].includes(String(v)),
+    description: v => typeof v === "string" && v.length <= 4000,
+    work_date: v => typeof v === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + "T00:00:00Z")),
+    image_paths: v => Array.isArray(v) && v.length <= 20 && v.every(path => safeStoragePath(path) !== null),
+    image_urls: v => Array.isArray(v) && v.length <= 20 && v.every(url => storagePathFromPublicUrl(url) !== null),
+    is_published: v => typeof v === "boolean",
+    sort_order: v => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
+  },
+  site_content: {
+    key: v => typeof v === "string" && /^[a-z0-9_-]{1,80}$/.test(v),
+    value: v => typeof v === "string" && v.length <= 6000,
+  },
+};
+
+function validateValues(table: string, raw: unknown): Record<string, unknown> {
+  if (!isRecord(raw)) throw new RequestBodyError("Data yang dikirim tidak valid.", 400);
+  const rules = fieldRules[table];
+  if (!rules) throw new RequestBodyError("Modul tidak dikenal.", 400);
+  const keys = Object.keys(raw);
+  if (!keys.length || keys.some(key => !Object.prototype.hasOwnProperty.call(rules, key))) {
+    throw new RequestBodyError("Ada kolom yang tidak diizinkan atau data kosong.", 400);
+  }
+  for (const key of keys) {
+    if (!rules[key](raw[key])) {
+      throw new RequestBodyError("Format atau ukuran kolom " + key + " tidak valid.", 400);
+    }
+  }
+  if (table === "testimonials") {
+    const paths = raw.image_paths;
+    const urls = raw.image_urls;
+    if (Array.isArray(paths) && Array.isArray(urls) && paths.length !== urls.length) {
+      throw new RequestBodyError("Daftar foto testimoni tidak sinkron.", 400);
+    }
+  }
+  return raw;
+}
+
+function validRowId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  const origin = req.headers.get("origin");
+  const respond = (body: unknown, status = 200) => json(body, status, origin);
+  if (origin && !allowedOrigins.has(origin)) {
+    return new Response("Origin tidak diizinkan.", {
+      status: 403,
+      headers: { "Vary": "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+    });
+  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
   try {
     const url = new URL(req.url);
     const queryAction = url.searchParams.get("action");
@@ -114,29 +210,34 @@ Deno.serve(async (req: Request) => {
       try {
         body = await readJsonBody(req, 256_000);
       } catch (error) {
-        if (error instanceof RequestBodyError) return json({ error: error.message }, error.status);
-        return json({ error: "Format permintaan tidak valid." }, 400);
+        if (error instanceof RequestBodyError) return respond({ error: error.message }, error.status);
+        return respond({ error: "Format permintaan tidak valid." }, 400);
       }
     }
     const action = queryAction || body.action;
+    const expectedMethod: Record<string, string> = {
+      login: "POST", me: "GET", logout: "POST", "change-password": "POST",
+      upload: "POST", list: "GET", create: "POST", update: "PATCH", delete: "DELETE",
+    };
+    if (typeof action !== "string" || expectedMethod[action] !== req.method) {
+      return respond({ error: "Aksi atau metode permintaan tidak diizinkan." }, 405);
+    }
 
     if (action === "login" && req.method === "POST") {
       const username = String(body.username || "").trim().toLowerCase();
       const password = String(body.password || "");
       if (!username || !password || username.length > 40 || password.length > 200) {
-        return json({ error: "Username atau password tidak valid." }, 400);
+        return respond({ error: "Username atau password tidak valid." }, 400);
       }
-      const ipAddress = req.headers.get("cf-connecting-ip")
-        || req.headers.get("x-real-ip")
-        || req.headers.get("x-forwarded-for")
-        || "unknown";
+      // Use only the edge-populated client IP header for rate limiting.
+      const ipAddress = req.headers.get("cf-connecting-ip") || "unknown";
       const ipHash = await sha256(ipAddress.split(",")[0].trim());
       const { data: allowed, error: rateLimitError } = await db.rpc("consume_owner_login_attempt", {
         p_username: username,
         p_ip_hash: ipHash,
       });
       if (rateLimitError) throw rateLimitError;
-      if (!allowed) return json({ error: "Terlalu banyak percobaan. Coba lagi 15 menit." }, 429);
+      if (!allowed) return respond({ error: "Terlalu banyak percobaan. Coba lagi 15 menit." }, 429);
 
       const { data: owners, error: verifyError } = await db.rpc("verify_owner_login", {
         p_username: username,
@@ -144,7 +245,7 @@ Deno.serve(async (req: Request) => {
       });
       if (verifyError) throw verifyError;
       const owner = owners?.[0];
-      if (!owner) return json({ error: "Username atau password salah." }, 401);
+      if (!owner) return respond({ error: "Username atau password salah." }, 401);
 
       const token = crypto.randomUUID() + "." + crypto.randomUUID();
       const tokenHash = await sha256(token);
@@ -154,12 +255,12 @@ Deno.serve(async (req: Request) => {
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       });
       if (error) throw error;
-      return json({ token, owner: { username: owner.username, display_name: owner.display_name } });
+      return respond({ token, owner: { username: owner.username, display_name: owner.display_name } });
     }
 
     const authorization = req.headers.get("authorization") || "";
     const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-    if (!token) return json({ error: "Sesi Owner diperlukan." }, 401);
+    if (!token) return respond({ error: "Sesi Owner diperlukan." }, 401);
 
     const tokenHash = await sha256(token);
     const { data: sessions, error: sessionError } = await db.from("owner_sessions")
@@ -171,17 +272,17 @@ Deno.serve(async (req: Request) => {
       .limit(1);
     if (sessionError) throw sessionError;
     const session = sessions?.[0];
-    if (!session) return json({ error: "Sesi berakhir. Silakan login kembali." }, 401);
+    if (!session) return respond({ error: "Sesi berakhir. Silakan login kembali." }, 401);
 
     if (action === "me" && req.method === "GET") {
-      return json({ owner: session.owner_accounts });
+      return respond({ owner: session.owner_accounts });
     }
 
     if (action === "logout" && req.method === "POST") {
       const { error } = await db.from("owner_sessions")
         .update({ revoked_at: new Date().toISOString() }).eq("id", session.id);
       if (error) throw error;
-      return json({ ok: true });
+      return respond({ ok: true });
     }
 
     if (action === "change-password" && req.method === "POST") {
@@ -191,36 +292,36 @@ Deno.serve(async (req: Request) => {
         p_new_password: String(body.newPassword || ""),
       });
       if (error) throw error;
-      if (!data) return json({ error: "Kata sandi saat ini salah atau kata sandi baru belum memenuhi 12 karakter." }, 400);
+      if (!data) return respond({ error: "Kata sandi saat ini salah atau kata sandi baru belum memenuhi 12 karakter." }, 400);
       await db.from("owner_sessions").update({ revoked_at: new Date().toISOString() })
         .eq("owner_id", session.owner_id).is("revoked_at", null);
-      return json({ ok: true, message: "Kata sandi diperbarui. Silakan login kembali." });
+      return respond({ ok: true, message: "Kata sandi diperbarui. Silakan login kembali." });
     }
 
     if (action === "upload" && req.method === "POST") {
       const maxFileBytes = 8 * 1024 * 1024;
       const declaredLength = Number(req.headers.get("content-length") || 0);
       if (Number.isFinite(declaredLength) && declaredLength > maxFileBytes + 128 * 1024) {
-        return json({ error: "Ukuran foto terlalu besar. Maksimal 8 MB setelah crop." }, 413);
+        return respond({ error: "Ukuran foto terlalu besar. Maksimal 8 MB setelah crop." }, 413);
       }
       let form: FormData;
       try { form = await req.formData(); }
-      catch { return json({ error: "Form upload tidak valid. Silakan pilih ulang fotonya." }, 400); }
+      catch { return respond({ error: "Form upload tidak valid. Silakan pilih ulang fotonya." }, 400); }
       const uploadedFile = form.get("file");
-      if (!(uploadedFile instanceof File)) return json({ error: "File foto tidak ditemukan pada permintaan upload." }, 400);
+      if (!(uploadedFile instanceof File)) return respond({ error: "File foto tidak ditemukan pada permintaan upload." }, 400);
       const fileName = String(form.get("fileName") || uploadedFile.name || "ivory-photo.jpg")
         .replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 100);
       const mime = uploadedFile.type;
       if (!fileName || mime !== "image/jpeg" || !allowedImageTypes.has(mime)) {
-        return json({ error: "Hasil crop harus berupa JPEG." }, 400);
+        return respond({ error: "Hasil crop harus berupa JPEG." }, 400);
       }
       if (uploadedFile.size < 4 || uploadedFile.size > maxFileBytes) {
-        return json({ error: "Ukuran foto maksimal 8 MB setelah crop." }, 413);
+        return respond({ error: "Ukuran foto maksimal 8 MB setelah crop." }, 413);
       }
       const binary = new Uint8Array(await uploadedFile.arrayBuffer());
       if (binary.length < 4 || binary[0] !== 0xff || binary[1] !== 0xd8 || binary[2] !== 0xff ||
           binary[binary.length - 2] !== 0xff || binary[binary.length - 1] !== 0xd9) {
-        return json({ error: "File bukan gambar JPEG yang valid. Silakan crop ulang." }, 400);
+        return respond({ error: "File bukan gambar JPEG yang valid. Silakan crop ulang." }, 400);
       }
       const path = Date.now() + "-" + crypto.randomUUID() + "-" + fileName;
       const { error: storageError } = await db.storage.from("ivory-public").upload(path, binary, {
@@ -228,33 +329,38 @@ Deno.serve(async (req: Request) => {
       });
       if (storageError) {
         console.error("Ivory media upload failed:", storageError.message);
-        return json({ error: "Storage menolak foto. Pastikan ukuran akhir maksimal 8 MB, lalu coba lagi." }, 502);
+        return respond({ error: "Storage menolak foto. Pastikan ukuran akhir maksimal 8 MB, lalu coba lagi." }, 502);
       }
       const { data } = db.storage.from("ivory-public").getPublicUrl(path);
-      return json({ path, url: data.publicUrl });
+      return respond({ path, url: data.publicUrl });
     }
 
     const table = String(body.table || url.searchParams.get("table") || "");
-    if (!allowedTables.has(table)) return json({ error: "Modul tidak dikenal." }, 400);
+    if (!allowedTables.has(table)) return respond({ error: "Modul tidak dikenal." }, 400);
 
-    if (req.method === "GET") {
+    if (action === "list" && req.method === "GET") {
       let query = db.from(table).select("*");
       if (table === "testimonials") query = query.order("work_date", { ascending: false });
       else if (table === "site_content") query = query.order("key", { ascending: true });
       else query = query.order("sort_order", { ascending: true });
       const { data, error } = await query;
       if (error) throw error;
-      return json({ data });
+      return respond({ data });
     }
 
-    if (req.method === "POST") {
-      const { data, error } = await db.from(table).insert(body.values || {}).select().single();
+    if (action === "create" && req.method === "POST") {
+      const values = validateValues(table, body.values);
+      const { data, error } = await db.from(table).insert(values).select().single();
       if (error) throw error;
-      return json({ data }, 201);
+      return respond({ data }, 201);
     }
 
-    if (req.method === "PATCH") {
-      const { id, values } = body;
+    if (action === "update" && req.method === "PATCH") {
+      const { id } = body;
+      const values = validateValues(table, body.values);
+      if (table !== "site_content" && !validRowId(id)) {
+        return respond({ error: "ID data tidak valid." }, 400);
+      }
       let obsoleteMedia: string[] = [];
       if (table !== "site_content" && id && values && typeof values === "object") {
         if (table === "testimonials" && Array.isArray((values as Record<string, unknown>).image_paths)) {
@@ -275,15 +381,16 @@ Deno.serve(async (req: Request) => {
         ? await db.from(table).upsert(values, { onConflict: "key" }).select().single()
         : await db.from(table).update(values).eq("id", id).select().single();
       if (error) throw error;
-      if (!data) return json({ error: "Data tidak ditemukan." }, 404);
+      if (!data) return respond({ error: "Data tidak ditemukan." }, 404);
       await removeIvoryMedia(obsoleteMedia);
-      return json({ data });
+      return respond({ data });
     }
 
-    if (req.method === "DELETE") {
+    if (action === "delete" && req.method === "DELETE") {
       if (table === "site_content") {
-        return json({ error: "Konten website tidak dapat dihapus dari dashboard." }, 405);
+        return respond({ error: "Konten website tidak dapat dihapus dari dashboard." }, 405);
       }
+      if (!validRowId(body.id)) return respond({ error: "ID data tidak valid." }, 400);
       let mediaToRemove: string[] = [];
       if (table === "testimonials") {
         const { data: before, error: readError } = await db.from(table).select("image_paths").eq("id", body.id).maybeSingle();
@@ -298,12 +405,12 @@ Deno.serve(async (req: Request) => {
       const { error } = await db.from(table).delete().eq("id", body.id);
       if (error) throw error;
       await removeIvoryMedia(mediaToRemove);
-      return json({ ok: true });
+      return respond({ ok: true });
     }
 
-    return json({ error: "Metode tidak didukung." }, 405);
+    return respond({ error: "Metode tidak didukung." }, 405);
   } catch (error) {
     console.error(error);
-    return json({ error: "Permintaan gagal diproses. Silakan coba lagi." }, 500);
+    return respond({ error: "Permintaan gagal diproses. Silakan coba lagi." }, 500);
   }
 });

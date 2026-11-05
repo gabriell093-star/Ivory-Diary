@@ -179,7 +179,7 @@ function App(){
    <p className="admin-helper">Perubahan tersimpan ke database dan akan tampil pada halaman publik setelah sesi Owner ditutup.</p>
    
   </main>
-  {cropFile&&<ImageCropper file={cropFile} busy={cropBusy} onCancel={()=>{if(!cropBusy){setCropFile(null);setCropTarget(null)}}} onComplete={finishCrop}/>}
+  {cropFile&&<ImageCropper file={cropFile} aspectRatio={cropTarget==='photo_path'?4/5:undefined} busy={cropBusy} onCancel={()=>{if(!cropBusy){setCropFile(null);setCropTarget(null)}}} onComplete={finishCrop}/>}
  </div>;
 
  return <div id="top" className="site-shell">
@@ -233,7 +233,7 @@ function App(){
   </section></div>}
 
   {modal==='login'&&<div className="modal-backdrop" onMouseDown={e=>e.target===e.currentTarget&&setModal(null)}><form className="modal login-modal" onSubmit={login}><div className="modal-top"><span className="eyebrow">PRIVATE AREA / OWNER</span><IconButton label="Tutup" onClick={()=>setModal(null)}><X/></IconButton></div><h2>Welcome back.</h2><p className="modal-description">Masuk untuk mengelola konten Ivory Diary.</p><label className="field"><span>Username</span><input autoComplete="username" value={loginName} onChange={e=>setLoginName(e.target.value)} required/></label><label className="field"><span>Password</span><input type="password" autoComplete="current-password" value={loginPass} onChange={e=>setLoginPass(e.target.value)} required/></label>{loginError&&<p className="error-text">{loginError}</p>}<button className="button primary full" disabled={loginBusy}>{loginBusy?'Memverifikasi…':'Masuk ke dashboard'} <ArrowUpRight size={16}/></button></form></div>}
-  {cropFile&&<ImageCropper file={cropFile} busy={cropBusy} onCancel={()=>{if(!cropBusy){setCropFile(null);setCropTarget(null)}}} onComplete={finishCrop}/>}
+  {cropFile&&<ImageCropper file={cropFile} aspectRatio={cropTarget==='photo_path'?4/5:undefined} busy={cropBusy} onCancel={()=>{if(!cropBusy){setCropFile(null);setCropTarget(null)}}} onComplete={finishCrop}/>}
  </div>;
 }
 export default App;

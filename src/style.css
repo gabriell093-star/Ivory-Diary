@@ -290,3 +290,146 @@
   .staff-meta-copy h3{font-size:28px}
   .staff-meta-copy p{max-width:none;font-size:11px;line-height:1.8}
 }
+
+
+/* Final Staff card layout: image and copy are separate, non-overlapping rows. */
+#top .staff-section .staff-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:start;
+  gap:38px;
+}
+#top .staff-section .staff-grid>.staff-card{
+  display:flex;
+  flex-flow:column nowrap;
+  align-items:stretch;
+  justify-content:flex-start;
+  gap:0;
+  width:100%;
+  min-width:0;
+  height:auto;
+  position:relative;
+  overflow:visible;
+}
+#top .staff-section .staff-card>.staff-photo{
+  display:block;
+  position:relative;
+  flex:0 0 auto;
+  width:100%;
+  min-width:0;
+  height:auto;
+  max-height:none;
+  aspect-ratio:auto;
+  margin:0;
+  padding:0;
+  overflow:visible;
+  background:transparent;
+}
+#top .staff-section .staff-card .staff-photo-frame{
+  display:block;
+  position:relative;
+  width:100%;
+  height:auto;
+  aspect-ratio:4 / 5;
+  max-height:520px;
+  min-height:0;
+  overflow:hidden;
+  isolation:isolate;
+  background:var(--red-soft);
+}
+#top .staff-section .staff-card .staff-photo-frame>img,
+#top .staff-section .staff-card .staff-photo-frame>.portrait-fallback{
+  position:absolute;
+  inset:0;
+  display:grid;
+  width:100%;
+  height:100%;
+  max-width:none;
+  min-width:0;
+  min-height:0;
+  margin:0;
+  object-fit:cover;
+  object-position:center;
+}
+#top .staff-section .staff-card .staff-photo-frame>img{display:block}
+#top .staff-section .staff-card>.staff-photo>.staff-photo-index{
+  position:absolute;
+  z-index:2;
+  top:14px;
+  left:14px;
+  display:inline-flex;
+  width:auto;
+  height:auto;
+  margin:0;
+  padding:7px 9px;
+  line-height:1;
+  background:var(--bg);
+  color:var(--red);
+}
+#top .staff-section .staff-card>.staff-meta{
+  display:flex;
+  flex:0 0 auto;
+  flex-direction:row;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  position:static;
+  width:100%;
+  min-width:0;
+  height:auto;
+  margin:0;
+  padding:20px 0 0;
+  overflow:visible;
+}
+#top .staff-section .staff-card .staff-meta-copy{
+  display:block;
+  flex:1 1 auto;
+  position:static;
+  width:auto;
+  min-width:0;
+  height:auto;
+  margin:0;
+  padding:0;
+  overflow:visible;
+}
+#top .staff-section .staff-card .staff-meta-copy>h3{
+  display:block;
+  position:static;
+  margin:0 0 8px;
+  line-height:1.08;
+  overflow-wrap:anywhere;
+}
+#top .staff-section .staff-card .staff-meta-copy>p{
+  display:block;
+  position:static;
+  width:auto;
+  max-width:420px;
+  height:auto;
+  margin:0;
+  line-height:1.8;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+#top .staff-section .staff-card>.staff-meta>.round-arrow{
+  display:grid;
+  position:static;
+  flex:0 0 42px;
+  width:42px;
+  height:42px;
+  margin:0;
+}
+@media(max-width:850px){
+  #top .staff-section .staff-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+}
+@media(max-width:640px){
+  #top .staff-section .staff-grid{grid-template-columns:minmax(0,1fr);gap:34px}
+  #top .staff-section .staff-grid>.staff-card{width:100%;max-width:520px;margin:0 auto}
+  #top .staff-section .staff-card .staff-photo-frame{aspect-ratio:4 / 5;max-height:480px}
+  #top .staff-section .staff-card>.staff-meta{padding-top:16px;gap:12px}
+  #top .staff-section .staff-card .staff-meta-copy>h3{font-size:28px}
+  #top .staff-section .staff-card .staff-meta-copy>p{max-width:none;font-size:11px}
+}
+
+/* Crop dialog is shared by Owner media fields; keep it above the admin shell. */
+.crop-backdrop{z-index:9999}
+.crop-dialog{position:relative;z-index:10000}

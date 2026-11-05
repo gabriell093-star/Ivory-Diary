@@ -16,6 +16,61 @@ const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false
 const allowedTables = new Set(["services", "staff", "testimonials", "site_content"]);
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
+
+class RequestBodyError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "RequestBodyError";
+    this.status = status;
+  }
+}
+
+async function readJsonBody(req: Request, maxBytes: number): Promise<Record<string, unknown>> {
+  const declaredLength = Number(req.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new RequestBodyError("Ukuran permintaan terlalu besar.", 413);
+  }
+  if (!req.body) return {};
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        throw new RequestBodyError("Ukuran permintaan terlalu besar.", 413);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw new RequestBodyError("Format permintaan tidak valid.", 400);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new RequestBodyError("Isi permintaan harus berupa objek JSON.", 400);
+  }
+  return parsed as Record<string, unknown>;
+}
+
 async function sha256(value: string) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -24,9 +79,18 @@ async function sha256(value: string) {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
-    const body = req.method === "GET" ? {} : await req.json().catch(() => ({}));
     const url = new URL(req.url);
-    const action = url.searchParams.get("action") || body.action;
+    const queryAction = url.searchParams.get("action");
+    let body: Record<string, unknown> = {};
+    if (req.method !== "GET") {
+      try {
+        body = await readJsonBody(req, queryAction === "upload" ? 12_000_000 : 256_000);
+      } catch (error) {
+        if (error instanceof RequestBodyError) return json({ error: error.message }, error.status);
+        return json({ error: "Format permintaan tidak valid." }, 400);
+      }
+    }
+    const action = queryAction || body.action;
 
     if (action === "login" && req.method === "POST") {
       const username = String(body.username || "").trim().toLowerCase();
@@ -34,18 +98,17 @@ Deno.serve(async (req: Request) => {
       if (!username || !password || username.length > 40 || password.length > 200) {
         return json({ error: "Username atau password tidak valid." }, 400);
       }
-      const forwarded = req.headers.get("x-forwarded-for") || "unknown";
-      const ipHash = await sha256(forwarded.split(",")[0].trim());
-      const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const { count, error: countError } = await db.from("owner_login_attempts")
-        .select("id", { count: "exact", head: true })
-        .eq("username", username).eq("ip_hash", ipHash).gte("attempted_at", since);
-      if (countError) throw countError;
-      if ((count || 0) >= 8) return json({ error: "Terlalu banyak percobaan. Coba lagi 15 menit." }, 429);
-
-      const { error: insertError } = await db.from("owner_login_attempts")
-        .insert({ username, ip_hash: ipHash });
-      if (insertError) throw insertError;
+      const ipAddress = req.headers.get("cf-connecting-ip")
+        || req.headers.get("x-real-ip")
+        || req.headers.get("x-forwarded-for")
+        || "unknown";
+      const ipHash = await sha256(ipAddress.split(",")[0].trim());
+      const { data: allowed, error: rateLimitError } = await db.rpc("consume_owner_login_attempt", {
+        p_username: username,
+        p_ip_hash: ipHash,
+      });
+      if (rateLimitError) throw rateLimitError;
+      if (!allowed) return json({ error: "Terlalu banyak percobaan. Coba lagi 15 menit." }, 429);
 
       const { data: owners, error: verifyError } = await db.rpc("verify_owner_login", {
         p_username: username,
@@ -63,8 +126,6 @@ Deno.serve(async (req: Request) => {
         expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       });
       if (error) throw error;
-      await db.from("owner_login_attempts").delete()
-        .lt("attempted_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
       return json({ token, owner: { username: owner.username, display_name: owner.display_name } });
     }
 

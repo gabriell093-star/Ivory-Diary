@@ -228,8 +228,12 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
 
     const anchor = gesture.mode === 'resize' && gesture.anchor ? gesture.anchor : gesture.start;
     const corner = gesture.corner ?? 'se';
-    const dirX = gesture.mode === 'resize' && corner.includes('w') ? -1 : 1;
-    const dirY = gesture.mode === 'resize' && corner.includes('n') ? -1 : 1;
+    const dirX = gesture.mode === 'resize'
+      ? (corner.includes('w') ? -1 : 1)
+      : (p.x < gesture.start.x ? -1 : 1);
+    const dirY = gesture.mode === 'resize'
+      ? (corner.includes('n') ? -1 : 1)
+      : (p.y < gesture.start.y ? -1 : 1);
     const maxW = dirX > 0 ? display.x + display.w - anchor.x : anchor.x - display.x;
     const maxH = dirY > 0 ? display.y + display.h - anchor.y : anchor.y - display.y;
     let width = Math.max(16, Math.abs(p.x - anchor.x));

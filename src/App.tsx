@@ -73,7 +73,7 @@ function App(){
  const scrollTo=(id:string)=>{setMenuOpen(false);document.getElementById(id)?.scrollIntoView({behavior:'smooth'})};
  const visibleTestimonials=testimonials.filter(item=>activeCategory==='all'||item.category===activeCategory);
 
- if(owner)return <div className="admin-shell">
+ if(owner&&path==='/owner')return <div className="admin-shell">
   <aside className="admin-side"><a className="brand" href="#top"><img src="/logo.svg" alt="Ivory Diary"/></a><p className="admin-caption">WORKSPACE</p>
    {([['services','Layanan'],['testimonials','Testimoni'],['staff','Staff'],['site_content','Konten Website']] as [AdminTab,string][]).map(([tab,label])=><button key={tab} className={adminTab===tab?'side-link active':'side-link'} onClick={()=>{setEditing(null);void fetchAdmin(tab)}}>{label}</button>)}
    <div className="side-bottom"><span>Masuk sebagai <b>{owner.display_name}</b></span><button className="side-link" onClick={logout}>Keluar</button></div>

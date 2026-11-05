@@ -173,7 +173,7 @@ const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = 
       typeof item.price === "number" && Number.isSafeInteger(item.price) && Number(item.price) >= 0 && Number(item.price) <= 1000000000
     ),
     is_active: v => typeof v === "boolean",
-    sort_order: v => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
+    sort_order: v => typeof v === "number" && Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
   },
   staff: {
     slug: v => typeof v === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v) && v.length <= 100,
@@ -184,7 +184,7 @@ const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = 
     photo_path: v => v === null || storagePathFromPublicUrl(v) !== null,
     is_visible: v => typeof v === "boolean",
     is_detailed: v => typeof v === "boolean",
-    sort_order: v => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
+    sort_order: v => typeof v === "number" && Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
   },
   testimonials: {
     service_slug: v => typeof v === "string" && v.length <= 120,
@@ -194,7 +194,7 @@ const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = 
     image_paths: v => Array.isArray(v) && v.length <= 20 && v.every(path => safeStoragePath(path) !== null),
     image_urls: v => Array.isArray(v) && v.length <= 20 && v.every(url => storagePathFromPublicUrl(url) !== null),
     is_published: v => typeof v === "boolean",
-    sort_order: v => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
+    sort_order: v => typeof v === "number" && Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 100000,
   },
   site_content: {
     key: v => typeof v === "string" && /^[a-z0-9_-]{1,80}$/.test(v),

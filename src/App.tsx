@@ -157,6 +157,7 @@ function App(){
    <p className="admin-helper">Perubahan tersimpan ke database dan akan tampil pada halaman publik setelah sesi Owner ditutup.</p>
    
   </main>
+  {cropFile&&<ImageCropper file={cropFile} busy={cropBusy} onCancel={()=>{if(!cropBusy){setCropFile(null);setCropTarget(null)}}} onComplete={finishCrop}/>}
  </div>;
 
  return <div id="top" className="site-shell">

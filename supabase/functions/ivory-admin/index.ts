@@ -111,8 +111,8 @@ Deno.serve(async (req: Request) => {
       const fileName = String(body.fileName || "").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 100);
       const mime = String(body.contentType || "");
       const base64 = String(body.base64 || "");
-      if (!fileName || !allowedImageTypes.has(mime) || !base64 || base64.length > 11_200_000) {
-        return json({ error: "Format gambar tidak didukung atau ukuran file terlalu besar." }, 400);
+      if (!fileName || mime !== "image/jpeg" || !allowedImageTypes.has(mime) || !base64 || base64.length > 11_200_000) {
+        return json({ error: "Hasil crop harus berupa JPEG yang valid dan berukuran maksimal 8 MB." }, 400);
       }
       let binary: Uint8Array;
       try {
@@ -120,8 +120,10 @@ Deno.serve(async (req: Request) => {
       } catch {
         return json({ error: "Data gambar tidak valid." }, 400);
       }
-      if (!binary.length || binary.length > 8 * 1024 * 1024) {
-        return json({ error: "Ukuran gambar maksimal 8 MB." }, 400);
+      if (binary.length < 4 || binary.length > 8 * 1024 * 1024 ||
+          binary[0] !== 0xff || binary[1] !== 0xd8 || binary[2] !== 0xff ||
+          binary[binary.length - 2] !== 0xff || binary[binary.length - 1] !== 0xd9) {
+        return json({ error: "File bukan gambar JPEG yang valid atau ukurannya melebihi 8 MB." }, 400);
       }
       const path = Date.now() + "-" + crypto.randomUUID() + "-" + fileName;
       const { error } = await db.storage.from("ivory-public").upload(path, binary, {

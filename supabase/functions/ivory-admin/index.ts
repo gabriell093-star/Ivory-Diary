@@ -76,6 +76,34 @@ async function sha256(value: string) {
   return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+
+function safeStoragePath(value: unknown): string | null {
+  if (typeof value !== "string" || value.length < 1 || value.length > 500) return null;
+  if (value.startsWith("/") || value.includes("\\") || value.split("/").some(part => part === "" || part === "." || part === "..")) return null;
+  if (!/^[A-Za-z0-9._/-]+$/.test(value)) return null;
+  return value;
+}
+
+function storagePathFromPublicUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 2048) return null;
+  try {
+    const parsed = new URL(value);
+    const projectOrigin = new URL(supabaseUrl).origin;
+    const prefix = "/storage/v1/object/public/ivory-public/";
+    if (parsed.origin !== projectOrigin || !parsed.pathname.startsWith(prefix)) return null;
+    return safeStoragePath(decodeURIComponent(parsed.pathname.slice(prefix.length)));
+  } catch {
+    return null;
+  }
+}
+
+async function removeIvoryMedia(paths: unknown[]) {
+  const unique = [...new Set(paths.map(safeStoragePath).filter((value): value is string => Boolean(value)))];
+  if (!unique.length) return;
+  const { error } = await db.storage.from("ivory-public").remove(unique);
+  if (error) console.error("Ivory media cleanup failed:", error.message);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -227,11 +255,28 @@ Deno.serve(async (req: Request) => {
 
     if (req.method === "PATCH") {
       const { id, values } = body;
+      let obsoleteMedia: string[] = [];
+      if (table !== "site_content" && id && values && typeof values === "object") {
+        if (table === "testimonials" && Array.isArray((values as Record<string, unknown>).image_paths)) {
+          const { data: before, error: readError } = await db.from(table).select("image_paths").eq("id", id).maybeSingle();
+          if (readError) throw readError;
+          const keep = new Set((values as Record<string, unknown>).image_paths as string[]);
+          obsoleteMedia = ((before?.image_paths || []) as string[]).filter((path) => !keep.has(path));
+        } else if (table === "staff" && Object.prototype.hasOwnProperty.call(values, "photo_path")) {
+          const { data: before, error: readError } = await db.from(table).select("photo_path").eq("id", id).maybeSingle();
+          if (readError) throw readError;
+          if (before?.photo_path && before.photo_path !== (values as Record<string, unknown>).photo_path) {
+            const oldPath = storagePathFromPublicUrl(before.photo_path);
+            if (oldPath) obsoleteMedia.push(oldPath);
+          }
+        }
+      }
       const { data, error } = table === "site_content"
         ? await db.from(table).upsert(values, { onConflict: "key" }).select().single()
         : await db.from(table).update(values).eq("id", id).select().single();
       if (error) throw error;
       if (!data) return json({ error: "Data tidak ditemukan." }, 404);
+      await removeIvoryMedia(obsoleteMedia);
       return json({ data });
     }
 
@@ -239,8 +284,20 @@ Deno.serve(async (req: Request) => {
       if (table === "site_content") {
         return json({ error: "Konten website tidak dapat dihapus dari dashboard." }, 405);
       }
+      let mediaToRemove: string[] = [];
+      if (table === "testimonials") {
+        const { data: before, error: readError } = await db.from(table).select("image_paths").eq("id", body.id).maybeSingle();
+        if (readError) throw readError;
+        mediaToRemove = (before?.image_paths || []) as string[];
+      } else if (table === "staff") {
+        const { data: before, error: readError } = await db.from(table).select("photo_path").eq("id", body.id).maybeSingle();
+        if (readError) throw readError;
+        const path = storagePathFromPublicUrl(before?.photo_path);
+        if (path) mediaToRemove.push(path);
+      }
       const { error } = await db.from(table).delete().eq("id", body.id);
       if (error) throw error;
+      await removeIvoryMedia(mediaToRemove);
       return json({ ok: true });
     }
 

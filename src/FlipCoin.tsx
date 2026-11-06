@@ -9,6 +9,8 @@ type FlipCoinProps = {
   isOwner?: boolean;
 };
 
+const FLIP_DURATION_MS = 2200;
+
 function sideLabel(side: CoinSide, mode: LabelMode) {
   if (mode === 'id') return side === 'heads' ? 'Depan' : 'Belakang';
   return side === 'heads' ? 'Heads' : 'Tails';
@@ -21,33 +23,39 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
   const [isFlipping, setIsFlipping] = useState(false);
   const [flipCount, setFlipCount] = useState(0);
   const timerRef = useRef<number | null>(null);
+  const flipLockRef = useRef(false);
 
   useEffect(() => () => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    flipLockRef.current = false;
   }, []);
 
   const flip = () => {
-    if (isFlipping) return;
+    // A ref closes the tiny gap before React applies the disabled state.
+    if (flipLockRef.current) return;
+    flipLockRef.current = true;
 
-    // One internal result is shared by both label modes: exactly 50:50.
+    // The internal outcome remains identical across both label modes.
     const next: CoinSide = Math.random() < 0.5 ? 'heads' : 'tails';
-    setFlipTarget(next);
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       setResult(next);
       setFlipTarget(null);
       setFlipCount((count) => count + 1);
+      flipLockRef.current = false;
       return;
     }
 
+    setFlipTarget(next);
     setIsFlipping(true);
     timerRef.current = window.setTimeout(() => {
       setResult(next);
       setFlipTarget(null);
       setIsFlipping(false);
       setFlipCount((count) => count + 1);
+      flipLockRef.current = false;
       timerRef.current = null;
-    }, 1050);
+    }, FLIP_DURATION_MS);
   };
 
   const coinClass = isFlipping
@@ -96,20 +104,44 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
           </div>
         </div>
 
-        <div className="flip-coin-stage">
+        <div className={isFlipping ? 'flip-coin-stage is-flipping' : 'flip-coin-stage'}>
           <div className="coin-shadow" aria-hidden="true" />
           <div className={coinClass} aria-hidden="true">
-            <div className="coin-face coin-face-front">
-              <span className="coin-monogram">ID</span>
-              <strong>{mode === 'id' ? 'DEPAN' : 'HEADS'}</strong>
-              <small>IVORY DIARY</small>
+            <div className="coin-edge-stack">
+              {Array.from({ length: 11 }, (_, index) => (
+                <span
+                  className="coin-edge-layer"
+                  key={index}
+                  style={{ transform: `translateZ(${(index - 5) * 2.8}px)` }}
+                />
+              ))}
             </div>
+
+            <div className="coin-face coin-face-front">
+              <div className="coin-face-inset">
+                <span className="coin-face-serial">IVORY DIARY <i /> EST. 2024</span>
+                <div className="coin-crest coin-crest-front">
+                  <span className="coin-crest-letter">I</span>
+                  <span className="coin-crest-accent" />
+                </div>
+                <strong className="coin-face-label">{mode === 'id' ? 'DEPAN' : 'HEADS'}</strong>
+                <span className="coin-face-footer"><span>NO. 01</span><span>PURE CHANCE</span></span>
+              </div>
+            </div>
+
             <div className="coin-face coin-face-back">
-              <span className="coin-monogram">ID</span>
-              <strong>{mode === 'id' ? 'BELAKANG' : 'TAILS'}</strong>
-              <small>IVORY DIARY</small>
+              <div className="coin-face-inset">
+                <span className="coin-face-serial">IVORY DIARY <i /> EST. 2024</span>
+                <div className="coin-crest coin-crest-back">
+                  <span className="coin-crest-letter">II</span>
+                  <span className="coin-crest-accent" />
+                </div>
+                <strong className="coin-face-label">{mode === 'id' ? 'BELAKANG' : 'TAILS'}</strong>
+                <span className="coin-face-footer"><span>NO. 02</span><span>PURE CHANCE</span></span>
+              </div>
             </div>
           </div>
+          <span className="flip-coin-stage-caption" aria-hidden="true">THE IVORY EDITION / 01—02</span>
         </div>
 
         <div className="flip-coin-outcome" aria-live="polite" aria-atomic="true">

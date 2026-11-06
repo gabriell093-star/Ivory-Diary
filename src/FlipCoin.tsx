@@ -392,6 +392,8 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
       webglRenderer.outputColorSpace = THREE.SRGBColorSpace;
       webglRenderer.toneMapping = THREE.ACESFilmicToneMapping;
       webglRenderer.toneMappingExposure = 1.12;
+      webglRenderer.shadowMap.enabled = true;
+      webglRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
       webglRenderer.setClearColor('#151011', 0);
 
       pmrem = new THREE.PMREMGenerator(webglRenderer);
@@ -405,6 +407,11 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
 
       const keyLight = new THREE.DirectionalLight('#FFF1E7', 4.3);
       keyLight.position.set(-3.6, 4.8, 5.5);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.set(1024, 1024);
+      keyLight.shadow.camera.near = 0.5;
+      keyLight.shadow.camera.far = 18;
+      keyLight.shadow.bias = -0.00008;
       scene.add(keyLight);
 
       const warmRim = new THREE.PointLight('#B52A31', 18, 12, 2);
@@ -432,15 +439,13 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
           depthWrite: false,
           toneMapped: false,
         });
-        shadow = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 4.4), shadowMaterial);
-        shadow.rotation.x = -Math.PI / 2;
+        shadow = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.9), shadowMaterial);
         shadow.position.set(0, -1.175, -0.08);
         scene.add(shadow);
       } else {
         shadowMaterial = new THREE.MeshBasicMaterial({ color: '#090708', transparent: true, opacity: 0.2 });
-        shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.6), shadowMaterial);
-        shadow.rotation.x = -Math.PI / 2;
-        shadow.position.y = -1.17;
+        shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.1), shadowMaterial);
+        shadow.position.set(0, -1.17, -0.08);
         scene.add(shadow);
       }
 
@@ -543,10 +548,12 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
         softShadowTexture?.dispose();
         environmentTexture?.dispose();
         pmrem?.dispose();
-        renderer.dispose();
+        webglRenderer.dispose();
       };
     } catch {
       setWebglUnavailable(true);
+      environmentTexture?.dispose();
+      pmrem?.dispose();
       renderer?.dispose();
       return undefined;
     }

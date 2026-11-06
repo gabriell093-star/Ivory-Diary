@@ -356,7 +356,7 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
     const stage = stageRef.current;
     if (!canvas || !stage) return undefined;
 
-    let renderer: THREE.WebGLRenderer;
+    let renderer: THREE.WebGLRenderer | null = null;
     let environmentTexture: THREE.Texture | null = null;
     let animationFrame = 0;
     let animation: {
@@ -380,20 +380,21 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
     let softShadowTexture: THREE.CanvasTexture | null = null;
 
     try {
-      renderer = new THREE.WebGLRenderer({
+      const webglRenderer = new THREE.WebGLRenderer({
         canvas,
         alpha: true,
         antialias: true,
         powerPreference: 'high-performance',
         stencil: false,
       });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.12;
-      renderer.setClearColor('#151011', 0);
+      renderer = webglRenderer;
+      webglRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
+      webglRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      webglRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      webglRenderer.toneMappingExposure = 1.12;
+      webglRenderer.setClearColor('#151011', 0);
 
-      pmrem = new THREE.PMREMGenerator(renderer);
+      pmrem = new THREE.PMREMGenerator(webglRenderer);
       pmrem.compileEquirectangularShader();
       environment = new RoomEnvironment();
       environmentTexture = pmrem.fromScene(environment, 0.04).texture;
@@ -446,7 +447,7 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
       const resize = () => {
         const width = Math.max(1, stage.clientWidth);
         const height = Math.max(1, stage.clientHeight);
-        renderer.setSize(width, height, false);
+        webglRenderer.setSize(width, height, false);
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
       };
@@ -456,7 +457,7 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
 
       sceneHandleRef.current = {
         startFlip: (side) => {
-          const fromX = side === result ? (side === 'tails' ? Math.PI : 0) : coin.rotation.x;
+          const fromX = coin.rotation.x;
           const targetX = side === 'tails' ? Math.PI : 0;
           const remainder = ((targetX - fromX) % TAU + TAU) % TAU;
           animation = {
@@ -481,7 +482,10 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
 
         if (animation) {
           const progress = Math.min(1, Math.max(0, (now - animation.start) / animation.duration));
-          const angularProgress = 1 - Math.pow(1 - progress, 3.15);
+          const launchPhase = Math.min(1, progress / 0.12);
+          const angularProgress = progress < 0.12
+            ? 0.1 * (1 - Math.pow(1 - launchPhase, 3))
+            : 0.1 + 0.9 * (3 * Math.pow((progress - 0.12) / 0.88, 2) - 2 * Math.pow((progress - 0.12) / 0.88, 3));
           const lift = Math.sin(progress * Math.PI);
           const wobble = Math.sin(progress * Math.PI * 12) * Math.pow(1 - progress, 1.35) * 0.052;
 
@@ -520,7 +524,7 @@ export default function FlipCoin({ onNavigate, isOwner = false }: FlipCoinProps)
           }
         }
 
-        renderer.render(scene, camera);
+        webglRenderer.render(scene, camera);
       };
       animationFrame = window.requestAnimationFrame(render);
       setWebglUnavailable(false);

@@ -46,3 +46,13 @@ Buka tautan **Owner access** di footer. Owner dapat mengelola layanan, testimoni
 - Environment variables wajib: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_ADMIN_FUNCTION_URL`
 
 Jangan memasukkan `.env`, password Owner, Supabase service-role key, atau token Owner ke repository.
+
+## Catatan sinkronisasi dan keamanan produksi
+
+- Riwayat migrasi database harus tetap sejalan dengan berkas SQL di `supabase/migrations`. Jangan mengubah skema produksi secara manual tanpa menambahkan migrasi yang sesuai ke repositori.
+- Frontend hanya boleh memakai `VITE_SUPABASE_PUBLISHABLE_KEY` (atau legacy anon key selama migrasi). Jangan pernah memasukkan `service_role` atau secret key ke variabel `VITE_*`.
+- Operasi Owner (login, sesi, perubahan password, CRUD, dan upload) melewati Edge Function `ivory-admin`. Token Owner disimpan di `sessionStorage`, sedangkan database hanya menyimpan hash token.
+- Tabel `owner_accounts`, `owner_sessions`, dan `owner_login_attempts` hanya boleh diakses server melalui `service_role`. Data katalog publik menggunakan kebijakan RLS baca-saja.
+- Bucket `ivory-public` boleh dibaca publik agar gambar katalog tampil; penulisan dan penghapusan media harus tetap melalui Edge Function Owner.
+- CORS Edge Function dibatasi ke domain produksi Ivory Diary serta localhost untuk pengembangan. CORS bukan pengganti autentikasi; setiap aksi administratif tetap memerlukan token Owner aktif.
+- Setelah mengubah environment variables Vercel, buat deployment baru agar hasil build memakai nilai terbaru. Setelah perubahan Edge Function, pastikan versi aktif sama dengan kode di branch `main`.

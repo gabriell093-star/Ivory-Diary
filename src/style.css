@@ -1616,7 +1616,7 @@
   transform:rotateX(-3deg) rotateZ(-3deg);
 }
 .coin-shell--tails{
-  transform:rotateX(177deg) rotateZ(177deg);
+  transform:rotateX(177deg) rotateZ(-3deg);
 }
 .coin-shell--flipping-heads{
   animation:ivory-coin-heads 2.2s cubic-bezier(.16,.68,.17,1) both;
@@ -1638,7 +1638,7 @@
   38%{transform:translateY(-62px) rotateX(1080deg) rotateZ(-9deg);filter:blur(.65px)}
   64%{transform:translateY(-35px) rotateX(1440deg) rotateZ(6deg);filter:blur(.4px)}
   84%{transform:translateY(-9px) rotateX(1620deg) rotateZ(-2deg);filter:blur(.15px)}
-  100%{transform:translateY(0) rotateX(1977deg) rotateZ(177deg);filter:blur(0)}
+  100%{transform:translateY(0) rotateX(1977deg) rotateZ(-3deg);filter:blur(0)}
 }
 @keyframes ivory-camera-follow{
   0%{transform:scale(1)}
@@ -1733,5 +1733,5 @@
   .coin-shell--flipping-tails,
   .is-flipping .coin-shadow{animation:none!important}
   .coin-shell--heads{transform:rotateX(-3deg) rotateZ(-3deg)}
-  .coin-shell--tails{transform:rotateX(177deg) rotateZ(177deg)}
+  .coin-shell--tails{transform:rotateX(177deg) rotateZ(-3deg)}
 }

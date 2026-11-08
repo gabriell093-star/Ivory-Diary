@@ -257,16 +257,17 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
       }
       const link = candidate.trim();
       if (!link) continue;
-      let parsed: URL | null = null;
-      try { parsed = new URL(link); } catch { /* Non-URL reference text is supported. */ }
-      if (parsed) {
-        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-          throw new RequestBodyError("URL referensi harus menggunakan HTTP atau HTTPS.", 400);
-        }
-      } else {
-        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(link)) {
+      if (/^https?:\/\//i.test(link)) {
+        try {
+          const parsed = new URL(link);
+          if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+            throw new Error("Protocol is not allowed");
+          }
+        } catch {
           throw new RequestBodyError("URL referensi pada bagian " + key + " tidak valid.", 400);
         }
+      } else {
+        // Non-URL content (including ordinary prose with colons) is plain reference text.
         plainTextWords += respectDescriptionWordCount(link);
       }
       nonEmptyLinks.push(link);

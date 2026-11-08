@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { BookOpen, Check, ExternalLink, ImagePlus, Link2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import ImageCropper from './ImageCropper';
 import { ADMIN_URL, PUBLIC_SUPABASE_KEY, adminRequest } from './lib';
@@ -79,10 +79,35 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
   const [slugTouched, setSlugTouched] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [cropBusy, setCropBusy] = useState(false);
+  const newUploadPathsRef = useRef<string[]>([]);
 
   const wordCount = useMemo(() => totalWords(draft?.sections || blankSections()), [draft?.sections]);
+  const filledSections = useMemo(
+    () => sectionMeta.filter(meta => draft?.sections[meta.key].description.trim()).length,
+    [draft?.sections],
+  );
+  const progressPercent = Math.round((filledSections / sectionMeta.length) * 100);
   const activeMeta = sectionMeta.find(section => section.key === activeSection)!;
   const activeContent = draft?.sections[activeSection] || blankSections()[activeSection];
+
+  const cleanupUploadedMedia = async () => {
+    const paths = [...new Set(newUploadPathsRef.current)];
+    if (!paths.length) return;
+    try {
+      await adminRequest(token, 'cleanup-media', { paths });
+      newUploadPathsRef.current = [];
+    } catch (error) {
+      console.warn('Respect Thread temporary media cleanup failed:', error);
+    }
+  };
+
+  const abandonDraft = async () => {
+    if (saving || cropBusy) return;
+    await cleanupUploadedMedia();
+    setCropFile(null);
+    setDraft(null);
+    setNotice('Perubahan yang belum disimpan dibatalkan.');
+  };
 
   const fetchThreads = async () => {
     setLoading(true);
@@ -176,6 +201,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       const result = await response.json().catch(() => ({ error: 'Respons upload tidak valid.' }));
       if (!response.ok) throw new Error(result.error || 'Foto gagal diunggah.');
       if (typeof result.path !== 'string' || typeof result.url !== 'string') throw new Error('Server tidak mengembalikan alamat foto yang valid.');
+      newUploadPathsRef.current.push(result.path);
       updateSection(activeSection, { images: [...activeContent.images, { path: result.path, url: result.url }] });
       setCropFile(null);
       setNotice('Foto berhasil ditambahkan ke ' + activeMeta.label + '.');
@@ -193,6 +219,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     if (!draft) return 'Editor belum dibuka.';
     if (!draft.title.trim()) return 'Judul Respect Thread wajib diisi.';
     if (!draft.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(draft.slug)) return 'Slug harus menggunakan huruf kecil, angka, dan tanda hubung.';
+    if (items.some(item => item.slug === draft.slug && item.id !== draft.id)) return 'Slug tersebut sudah digunakan. Silakan ubah alamat halaman.';
     if (wordCount > 15000) return 'Total seluruh deskripsi maksimal 15.000 kata.';
     const hasContent = sectionMeta.some(meta => draft.sections[meta.key].description.trim());
     if (!hasContent) return 'Isi setidaknya satu deskripsi pada salah satu bagian.';
@@ -235,6 +262,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       } else {
         await adminRequest(token, 'create', { table: 'respect_threads', values });
       }
+      await cleanupUploadedMedia();
       setDraft(null);
       await fetchThreads();
       setNotice(draft.is_published ? 'Respect Thread berhasil disimpan dan dipublikasikan.' : 'Respect Thread tersimpan sebagai draft pribadi.');
@@ -270,7 +298,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
 
       {draft ? (
         <div className="rt-editor">
-          <div className="rt-editor-toolbar"><div><span className="eyebrow">THREAD EDITOR / {draft.id ? 'EDIT' : 'NEW ENTRY'}</span><h3>{draft.id ? 'Perbarui thread' : 'Thread baru'}</h3></div><button type="button" className="rt-editor-close" onClick={() => !saving && setDraft(null)} disabled={saving}><X size={16} /> Tutup editor</button></div>
+          <div className="rt-editor-toolbar"><div><span className="eyebrow">THREAD EDITOR / {draft.id ? 'EDIT' : 'NEW ENTRY'}</span><h3>{draft.id ? 'Perbarui thread' : 'Thread baru'}</h3><p>Susun materi per bagian, periksa batas kata, lalu simpan sebagai draft atau publikasikan.</p></div><button type="button" className="rt-editor-close" onClick={() => void abandonDraft()} disabled={saving || cropBusy}><X size={16} /> Tutup editor</button></div>
 
           <div className="rt-editor-meta">
             <label className="field"><span>Judul Respect Thread *</span><input value={draft.title} maxLength={180} placeholder="Contoh: Nama Karakter — Respect Thread" onChange={event => {
@@ -282,12 +310,12 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
             <label className="field"><span>Alamat halaman (slug) *</span><input value={draft.slug} maxLength={180} placeholder="nama-karakter-respect-thread" onChange={event => { setSlugTouched(true); setDraft(current => current ? ({ ...current, slug: makeSlug(event.target.value) }) : current); }} /><small>Halaman publik: /respect-thread/{draft.slug || 'slug-thread'}</small></label>
           </div>
 
-          <div className="rt-editor-section-intro"><span className="eyebrow">CONTENT STRUCTURE / 07 SECTIONS</span><p>Pilih bagian yang ingin diisi. Setiap bagian memiliki kolom deskripsinya sendiri.</p></div>
+          <div className="rt-editor-section-intro"><div><span className="eyebrow">CONTENT STRUCTURE / 07 SECTIONS</span><p>Pilih bagian untuk mulai menulis. Bagian yang sudah memiliki deskripsi akan ditandai.</p></div><div className="rt-editor-progress" aria-label={filledSections + ' dari 7 bagian sudah diisi'}><div><span>{filledSections} / 07 BAGIAN TERISI</span><b>{progressPercent}%</b></div><div className="rt-progress-track"><span style={{ width: progressPercent + '%' }} /></div></div></div>
           <div className="rt-editor-layout">
             <nav className="rt-editor-nav" aria-label="Pilih bagian Respect Thread">
               {sectionMeta.map((meta, index) => {
                 const filled = Boolean(draft.sections[meta.key].description.trim());
-                return <button type="button" key={meta.key} className={activeSection === meta.key ? 'active' : ''} onClick={() => { setActiveSection(meta.key); setNotice(''); }}><span>{String(index + 1).padStart(2, '0')}</span><b>{meta.label}</b>{filled && <Check size={14} />}</button>;
+                return <button type="button" key={meta.key} className={activeSection === meta.key ? 'active' : ''} onClick={() => { setActiveSection(meta.key); setNotice(''); }} aria-current={activeSection === meta.key ? 'step' : undefined}><span>{String(index + 1).padStart(2, '0')}</span><b>{meta.label}</b><i>{filled ? <Check size={13} /> : <small>Belum diisi</small>}</i></button>;
               })}
             </nav>
 
@@ -309,9 +337,9 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
           </div>
 
           <div className="rt-editor-footer">
-            <div className="rt-editor-word-total"><span>TOTAL KATA</span><b className={wordCount > 15000 ? 'over-limit' : ''}>{wordCount.toLocaleString('id-ID')} / 15.000</b></div>
+            <div className="rt-editor-word-total"><span>JUMLAH KATA</span><b className={wordCount > 15000 ? 'over-limit' : ''}>{wordCount.toLocaleString('id-ID')} <small>/ 15.000</small></b><div className="rt-word-track"><span className={wordCount > 15000 ? 'over-limit' : ''} style={{ width: Math.min(100, (wordCount / 15000) * 100) + '%' }} /></div></div>
             <label className="rt-publish-toggle"><input type="checkbox" checked={draft.is_published} onChange={event => setDraft(current => current ? ({ ...current, is_published: event.target.checked }) : current)} /><span><b>Publikasikan</b><small>{draft.is_published ? 'Thread dapat dibaca publik setelah disimpan.' : 'Thread disimpan sebagai draft dan tidak terlihat publik.'}</small></span></label>
-            <div className="rt-editor-actions"><button className="button secondary" type="button" onClick={() => setDraft(null)} disabled={saving}>Batal</button><button className="button primary" type="button" onClick={() => void save()} disabled={saving || wordCount > 15000}><Save size={15} /> {saving ? 'Menyimpan…' : draft.is_published ? 'Simpan & publikasikan' : 'Simpan draft'}</button></div>
+            <div className="rt-editor-actions"><button className="button secondary" type="button" onClick={() => void abandonDraft()} disabled={saving || cropBusy}>Batal</button><button className="button primary" type="button" onClick={() => void save()} disabled={saving || cropBusy || wordCount > 15000}><Save size={15} /> {saving ? 'Menyimpan…' : draft.is_published ? 'Simpan & publikasikan' : 'Simpan draft'}</button></div>
           </div>
         </div>
       ) : (

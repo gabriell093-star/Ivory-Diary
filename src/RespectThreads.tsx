@@ -26,13 +26,6 @@ const sectionMeta = [
   { key: 'resistance', label: 'Resistance', index: '07', hint: 'Ketahanan dan resistansi.' },
 ] as const;
 
-const formatDate = (value: string) => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? ''
-    : new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
-};
-
 const safeHttpUrl = (value?: string | null) => {
   if (!value) return null;
   try {
@@ -120,15 +113,14 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
       <section className="rt-page rt-detail-page section-wrap">
         <button className="rt-back-link" onClick={() => onNavigate('/respect-thread')}><ArrowLeft size={15} /> Semua Respect Thread</button>
         <header className="rt-detail-hero">
-          <div>
+          <div className="rt-detail-hero-copy">
             <span className="eyebrow">IVORY DIARY / RESPECT THREAD</span>
             <h1>{thread.title}</h1>
             {(thread.character_name || thread.universe) && (
               <p className="rt-detail-meta">{[thread.character_name, thread.universe].filter(Boolean).join(' · ')}</p>
             )}
-            <p className="rt-detail-intro">Dokumentasi penjelasan, istilah, statistik, kemampuan, dan resistansi secara terstruktur.</p>
+            <p className="rt-detail-intro">Referensi karakter yang disusun berdasarkan pengenalan, konteks, statistik, kemampuan, dan bukti pendukung.</p>
           </div>
-          <div className="rt-detail-mark"><BookOpen size={30} /><span>THREAD<br />NO. {String(thread.slug.length).padStart(2, '0')}</span></div>
         </header>
 
         <nav className="rt-toc" aria-label="Daftar bagian Respect Thread">
@@ -163,14 +155,13 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
   return (
     <section className="rt-page section-wrap">
       <header className="rt-list-hero">
-        <div>
-          <span className="eyebrow">IVORY DIARY / KNOWLEDGE ARCHIVE</span>
+        <div className="rt-list-hero-copy">
+          <span className="eyebrow">IVORY DIARY / RESPECT THREAD</span>
           <h1>Respect <em>Thread.</em></h1>
-          <p>Arsip pembahasan karakter yang disusun secara terstruktur, dari pengenalan hingga kemampuan dan resistansi.</p>
+          <p>Temukan dokumentasi karakter yang disusun dengan penjelasan, referensi, statistik, kemampuan, dan bukti pendukung.</p>
         </div>
-        <div className="rt-list-mark"><BookOpen size={28} /><span>ANALYSIS<br />ARCHIVE</span></div>
       </header>
-      <div className="rt-list-toolbar"><span>{loading ? 'MEMUAT ARSIP…' : String(items.length).padStart(2, '0') + ' THREAD TERSEDIA'}</span><span>PUBLIC KNOWLEDGE / IVORY DIARY</span></div>
+      <div className="rt-list-toolbar"><span>{loading ? 'MEMUAT THREAD…' : String(items.length).padStart(2, '0') + ' THREAD TERSEDIA'}</span><span>TERBUKA UNTUK PUBLIK</span></div>
       {error ? <div className="rt-empty"><p>{error}</p><button className="button secondary" onClick={() => window.location.reload()}>Muat ulang</button></div>
         : loading ? <div className="rt-loading">Memuat daftar Respect Thread…</div>
           : items.length === 0 ? <div className="rt-empty"><span className="eyebrow">ARCHIVE / EMPTY</span><h2>Belum ada Respect Thread.</h2><p>Thread yang telah dipublikasikan akan muncul di halaman ini.</p></div>
@@ -179,12 +170,17 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
               return (
                 <button type="button" className="rt-list-card" key={item.id} onClick={() => onNavigate('/respect-thread/' + encodeURIComponent(item.slug))}>
                   <span className="rt-card-number">{String(index + 1).padStart(2, '0')}</span>
-                  <div className="rt-card-main"><span className="eyebrow">RESPECT THREAD / {String(count).padStart(2, '0')} SECTIONS</span><h2>{item.title}</h2><p>{[item.character_name, item.universe].filter(Boolean).join(' · ') || 'IVORY DIARY ARCHIVE'}</p></div>
-                  <ArrowUpRight size={20} />
+                  <div className="rt-card-main">
+                    <span className="rt-card-overline">RESPECT THREAD <span>{String(count).padStart(2, '0')} / 07 BAGIAN</span></span>
+                    <h2>{item.title}</h2>
+                    <p className="rt-card-meta">{[item.character_name, item.universe].filter(Boolean).join(' · ') || 'Karakter / Universe tidak dicantumkan'}</p>
+                    {item.sections?.introduction?.description?.trim() && <p className="rt-card-excerpt">{item.sections.introduction.description.trim().replace(/\s+/g, ' ').slice(0, 145)}{item.sections.introduction.description.trim().length > 145 ? '…' : ''}</p>}
+                  </div>
+                  <span className="rt-card-arrow"><ArrowUpRight size={19} /></span>
                 </button>
               );
             })}</div>}
-      <div className="rt-list-footnote"><span>CURATED BY IVORY DIARY</span><span>KNOWLEDGE / ANALYSIS / DOCUMENTATION</span></div>
+      <div className="rt-list-footnote"><span>IVORY DIARY / RESPECT THREADS</span><span>OPEN READING / PUBLIC COLLECTION</span></div>
     </section>
   );
 }

@@ -8,8 +8,18 @@ const allowedOrigins = new Set([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
 ]);
+const isAllowedOrigin = (origin: string): boolean => {
+  if (allowedOrigins.has(origin)) return true;
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === "https:" &&
+      /^iivory-diary-[a-z0-9-]+-nffachys-projects\.vercel\.app$/i.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
 const corsHeaders = (origin: string | null): Record<string, string> => ({
-  ...(origin && allowedOrigins.has(origin) ? { "Access-Control-Allow-Origin": origin } : {}),
+  ...(origin && isAllowedOrigin(origin) ? { "Access-Control-Allow-Origin": origin } : {}),
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Vary": "Origin",
@@ -23,7 +33,7 @@ const json = (body: unknown, status = 200, origin: string | null = null) => new 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-const allowedTables = new Set(["services", "staff", "testimonials", "site_content"]);
+const allowedTables = new Set(["services", "staff", "testimonials", "site_content", "respect_threads"]);
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 
@@ -155,6 +165,129 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+const respectSectionKeys = ["introduction", "terminology", "cosmology", "personality", "statistic", "hax_ability", "resistance"] as const;
+const respectImageLimits: Record<string, number> = {
+  introduction: 1,
+  terminology: 0,
+  cosmology: 0,
+  personality: 0,
+  statistic: 10,
+  hax_ability: 10,
+  resistance: 10,
+};
+const respectSectionWordLimits: Record<string, number> = {
+  introduction: 2000,
+  terminology: 5000,
+  cosmology: 5000,
+  personality: 5000,
+  statistic: 5000,
+  hax_ability: 5000,
+  resistance: 5000,
+};
+
+function respectDescriptionWordCount(description: string): number {
+  const trimmed = description.trim();
+  return trimmed ? (trimmed.match(/\S+/g) || []).length : 0;
+}
+
+function respectThreadImagePaths(sections: unknown): string[] {
+  if (!isRecord(sections)) return [];
+  const paths: string[] = [];
+  for (const key of respectSectionKeys) {
+    const section = sections[key];
+    if (!isRecord(section) || !Array.isArray(section.images)) continue;
+    for (const image of section.images) {
+      if (isRecord(image)) {
+        const path = safeStoragePath(image.path);
+        if (path) paths.push(path);
+      }
+    }
+  }
+  return [...new Set(paths)];
+}
+
+function validateRespectSections(raw: unknown): Record<string, unknown> {
+  if (!isRecord(raw) || Object.keys(raw).length !== respectSectionKeys.length ||
+      respectSectionKeys.some(key => !Object.prototype.hasOwnProperty.call(raw, key))) {
+    throw new RequestBodyError("Struktur tujuh bagian Respect Thread tidak lengkap.", 400);
+  }
+
+  for (const key of respectSectionKeys) {
+    const section = raw[key];
+    if (!isRecord(section)) throw new RequestBodyError("Bagian " + key + " tidak valid.", 400);
+    const allowedKeys = key === "introduction"
+      ? ["description", "images"]
+      : ["description", "link", "links", "images"];
+    if (Object.keys(section).some(field => !allowedKeys.includes(field))) {
+      throw new RequestBodyError("Ada kolom yang tidak diizinkan pada bagian " + key + ".", 400);
+    }
+
+    const description = section.description;
+    if (typeof description !== "string" || description.length > 180000) {
+      throw new RequestBodyError("Deskripsi pada bagian " + key + " tidak valid.", 400);
+    }
+    if (respectDescriptionWordCount(description) > respectSectionWordLimits[key]) {
+      throw new RequestBodyError("Deskripsi bagian " + key + " maksimal " + respectSectionWordLimits[key].toLocaleString("id-ID") + " kata.", 400);
+    }
+    const hasDescription = description.trim().length > 0;
+
+    const links: unknown[] = [];
+    if (key !== "introduction") {
+      if (section.links !== undefined) {
+        if (!Array.isArray(section.links)) {
+          throw new RequestBodyError("Daftar link pada bagian " + key + " tidak valid.", 400);
+        }
+        links.push(...section.links);
+      }
+      // Backward compatibility: older Respect Threads stored one legacy link string.
+      if (section.link !== undefined && section.link !== null && section.link !== "") {
+        if (typeof section.link !== "string") {
+          throw new RequestBodyError("Link pada bagian " + key + " tidak valid.", 400);
+        }
+        if (!Array.isArray(section.links)) links.push(section.link);
+      }
+    }
+
+    const nonEmptyLinks: string[] = [];
+    for (const candidate of links) {
+      if (typeof candidate !== "string" || candidate.length > 2048) {
+        throw new RequestBodyError("Link pada bagian " + key + " tidak valid.", 400);
+      }
+      const link = candidate.trim();
+      if (!link) continue;
+      try {
+        const parsed = new URL(link);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("Protocol is not allowed");
+      } catch {
+        throw new RequestBodyError("Link harus berupa alamat HTTP atau HTTPS yang valid.", 400);
+      }
+      nonEmptyLinks.push(link);
+    }
+
+    const images = section.images;
+    if (!Array.isArray(images) || images.length > respectImageLimits[key]) {
+      throw new RequestBodyError("Jumlah foto pada bagian " + key + " melebihi batas.", 400);
+    }
+    for (const image of images) {
+      if (!isRecord(image) || Object.keys(image).some(field => field !== "path" && field !== "url") ||
+          typeof image.path !== "string" || typeof image.url !== "string") {
+        throw new RequestBodyError("Data foto pada bagian " + key + " tidak valid.", 400);
+      }
+      const path = safeStoragePath(image.path);
+      if (!path || !path.startsWith("respect-threads/") || storagePathFromPublicUrl(image.url) !== path) {
+        throw new RequestBodyError("Alamat foto Respect Thread tidak valid.", 400);
+      }
+    }
+
+    // Link and photos may be staged while editing; the final save requires a description.
+    if (!hasDescription && (nonEmptyLinks.length > 0 || images.length > 0)) {
+      throw new RequestBodyError("Isi deskripsi pada bagian " + key + " sebelum menyimpan link atau foto.", 400);
+    }
+  }
+
+  return raw;
+}
+
 const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = {
   services: {
     slug: v => typeof v === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v) && v.length <= 100,
@@ -200,6 +333,16 @@ const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = 
     key: v => typeof v === "string" && /^[a-z0-9_-]{1,80}$/.test(v),
     value: v => typeof v === "string" && v.length <= 6000,
   },
+  respect_threads: {
+    slug: v => typeof v === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v) && v.length <= 180,
+    title: v => typeof v === "string" && v.trim().length > 0 && v.length <= 180,
+    character_name: v => typeof v === "string" && v.length <= 160,
+    universe: v => typeof v === "string" && v.length <= 160,
+    sections: v => {
+      try { validateRespectSections(v); return true; } catch { return false; }
+    },
+    is_published: v => typeof v === "boolean",
+  },
 };
 
 function validateValues(table: string, raw: unknown): Record<string, unknown> {
@@ -214,6 +357,9 @@ function validateValues(table: string, raw: unknown): Record<string, unknown> {
     if (!rules[key](raw[key])) {
       throw new RequestBodyError("Format atau ukuran kolom " + key + " tidak valid.", 400);
     }
+  }
+  if (table === "respect_threads") {
+    validateRespectSections(raw.sections);
   }
   if (table === "testimonials") {
     const hasPaths = Object.prototype.hasOwnProperty.call(raw, "image_paths");
@@ -242,7 +388,7 @@ function validRowId(value: unknown): value is string {
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
   const respond = (body: unknown, status = 200) => json(body, status, origin);
-  if (origin && !allowedOrigins.has(origin)) {
+  if (origin && !isAllowedOrigin(origin)) {
     return new Response("Origin tidak diizinkan.", {
       status: 403,
       headers: { "Vary": "Origin", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
@@ -255,7 +401,7 @@ Deno.serve(async (req: Request) => {
     let body: Record<string, unknown> = {};
     if (req.method !== "GET" && queryAction !== "upload") {
       try {
-        body = await readJsonBody(req, 256_000);
+        body = await readJsonBody(req, 1_500_000);
       } catch (error) {
         if (error instanceof RequestBodyError) return respond({ error: error.message }, error.status);
         return respond({ error: "Format permintaan tidak valid." }, 400);
@@ -264,7 +410,7 @@ Deno.serve(async (req: Request) => {
     const action = queryAction || body.action;
     const expectedMethod: Record<string, string> = {
       login: "POST", me: "GET", logout: "POST", "change-password": "POST",
-      upload: "POST", list: "GET", create: "POST", update: "PATCH", delete: "DELETE",
+      upload: "POST", "cleanup-media": "POST", list: "GET", create: "POST", update: "PATCH", delete: "DELETE",
     };
     if (typeof action !== "string" || expectedMethod[action] !== req.method) {
       return respond({ error: "Aksi atau metode permintaan tidak diizinkan." }, 405);
@@ -350,6 +496,25 @@ Deno.serve(async (req: Request) => {
       return respond({ ok: true, message: "Kata sandi diperbarui. Silakan login kembali." });
     }
 
+    if (action === "cleanup-media" && req.method === "POST") {
+      if (!Array.isArray(body.paths) || body.paths.length > 31) {
+        return respond({ error: "Daftar foto untuk pembersihan tidak valid." }, 400);
+      }
+      const submitted = body.paths.map(safeStoragePath);
+      if (submitted.some(path => !path || !path.startsWith("respect-threads/"))) {
+        return respond({ error: "Pembersihan hanya diizinkan untuk foto Respect Thread." }, 400);
+      }
+      const candidates = [...new Set(submitted.filter((path): path is string => Boolean(path)))];
+      if (!candidates.length) return respond({ ok: true, removed: 0 });
+
+      const { data: threads, error: readError } = await db.from("respect_threads").select("sections");
+      if (readError) throw readError;
+      const referenced = new Set((threads || []).flatMap(row => respectThreadImagePaths(row.sections)));
+      const unused = candidates.filter(path => !referenced.has(path));
+      await removeIvoryMedia(unused);
+      return respond({ ok: true, removed: unused.length });
+    }
+
     if (action === "upload" && req.method === "POST") {
       const maxFileBytes = 8 * 1024 * 1024;
       const declaredLength = Number(req.headers.get("content-length") || 0);
@@ -378,7 +543,9 @@ Deno.serve(async (req: Request) => {
           binary[binary.length - 2] !== 0xff || binary[binary.length - 1] !== 0xd9) {
         return respond({ error: "File bukan gambar JPEG yang valid. Silakan crop ulang." }, 400);
       }
-      const path = Date.now() + "-" + crypto.randomUUID() + "-" + fileName;
+      const folder = String(form.get("folder") || "").trim();
+      if (folder && folder !== "respect-threads") return respond({ error: "Folder upload tidak diizinkan." }, 400);
+      const path = (folder ? folder + "/" : "") + Date.now() + "-" + crypto.randomUUID() + "-" + fileName;
       const { error: storageError } = await db.storage.from("ivory-public").upload(path, binary, {
         contentType: mime, cacheControl: "31536000", upsert: false,
       });
@@ -397,6 +564,7 @@ Deno.serve(async (req: Request) => {
       let query = db.from(table).select("*");
       if (table === "testimonials") query = query.order("work_date", { ascending: false });
       else if (table === "site_content") query = query.order("key", { ascending: true });
+      else if (table === "respect_threads") query = query.order("updated_at", { ascending: false });
       else query = query.order("sort_order", { ascending: true });
       const { data, error } = await query;
       if (error) throw error;
@@ -406,6 +574,9 @@ Deno.serve(async (req: Request) => {
     if (action === "create" && req.method === "POST") {
       const values = validateValues(table, body.values);
       const { data, error } = await db.from(table).insert(values).select().single();
+      if (error?.code === "23505" && table === "respect_threads") {
+        return respond({ error: "Alamat halaman (slug) sudah digunakan oleh Respect Thread lain. Ubah slug lalu coba lagi." }, 409);
+      }
       if (error) throw error;
       return respond({ data }, 201);
     }
@@ -430,11 +601,20 @@ Deno.serve(async (req: Request) => {
             const oldPath = storagePathFromPublicUrl(before.photo_path);
             if (oldPath) obsoleteMedia.push(oldPath);
           }
+        } else if (table === "respect_threads" && Object.prototype.hasOwnProperty.call(values, "sections")) {
+          const { data: before, error: readError } = await db.from(table).select("sections").eq("id", id).maybeSingle();
+          if (readError) throw readError;
+          const keep = new Set(respectThreadImagePaths((values as Record<string, unknown>).sections));
+          obsoleteMedia = respectThreadImagePaths(before?.sections).filter(path => !keep.has(path));
         }
       }
+      const updateValues = table === "respect_threads" ? { ...values, updated_at: new Date().toISOString() } : values;
       const { data, error } = table === "site_content"
         ? await db.from(table).upsert(values, { onConflict: "key" }).select().single()
-        : await db.from(table).update(values).eq("id", id).select().single();
+        : await db.from(table).update(updateValues).eq("id", id).select().single();
+      if (error?.code === "23505" && table === "respect_threads") {
+        return respond({ error: "Alamat halaman (slug) sudah digunakan oleh Respect Thread lain. Ubah slug lalu coba lagi." }, 409);
+      }
       if (error) throw error;
       if (!data) return respond({ error: "Data tidak ditemukan." }, 404);
       await removeIvoryMedia(obsoleteMedia);
@@ -456,6 +636,10 @@ Deno.serve(async (req: Request) => {
         if (readError) throw readError;
         const path = storagePathFromPublicUrl(before?.photo_path);
         if (path) mediaToRemove.push(path);
+      } else if (table === "respect_threads") {
+        const { data: before, error: readError } = await db.from(table).select("sections").eq("id", body.id).maybeSingle();
+        if (readError) throw readError;
+        mediaToRemove = respectThreadImagePaths(before?.sections);
       }
       const { error } = await db.from(table).delete().eq("id", body.id);
       if (error) throw error;

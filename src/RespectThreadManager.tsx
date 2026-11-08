@@ -82,7 +82,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
 
   const wordCount = useMemo(() => totalWords(draft?.sections || blankSections()), [draft?.sections]);
   const activeMeta = sectionMeta.find(section => section.key === activeSection)!;
-  const activeContent = draft?.sections[activeSection];
+  const activeContent = draft?.sections[activeSection] || blankSections()[activeSection];
 
   const fetchThreads = async () => {
     setLoading(true);

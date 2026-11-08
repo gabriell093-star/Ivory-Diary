@@ -51,13 +51,23 @@ const newDraft = (): Draft => ({
 
 const MAX_THREAD_IMAGES = 10;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
-const words = (value: string) => value.trim() ? value.trim().split(/\s+/u).length : 0;
+const RESPECT_LINK_PATTERN = /(?:\\b[a-z][a-z0-9+.-]*:\\/\\/[^\\s<>()]+|\\bwww\\.[^\\s<>()]+|(?<![\\w@.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}(?::\\d+)?(?:\\/[^\\s<>()]*)?)/iu;
+const words = (value: string) => value.trim() ? value.trim().split(/\\s+/u).length : 0;
+const containsRespectLink = (value: string) => RESPECT_LINK_PATTERN.test(value);
+const isValidHttpReference = (value: string) => {
+  if (!/^https?:\\/\\//i.test(value)) return false;
+  try {
+    const parsed = new URL(value);
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
 const totalWords = (sections: ThreadSections) => sectionMeta.reduce((sum, item) => sum + words(sections[item.key]?.description || ''), 0);
 const countThreadImages = (sections: ThreadSections) => sectionMeta.reduce((sum, item) => sum + (sections[item.key]?.images?.length || 0), 0);
 const referenceTextWords = (references: string[]) => references.reduce((sum, value) => {
   const reference = value.trim();
-  if (!reference) return sum;
-  if (/^https?:\/\//i.test(reference)) return sum;
+  if (!reference || isValidHttpReference(reference)) return sum;
   return sum + words(reference);
 }, 0);
 const makeSlug = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 160);
@@ -234,17 +244,17 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       const section = draft.sections[meta.key];
       const hasDescription = section.description.trim().length > 0;
       const links = (section.links || []).map(link => link.trim()).filter(Boolean);
+      if (containsRespectLink(section.description)) return 'Deskripsi bagian ' + meta.label + ' tidak boleh mengandung URL atau tautan. Pindahkan ke bagian Link & teks referensi.';
       if (words(section.description) > meta.maxWords) return 'Bagian ' + meta.label + ' maksimal ' + meta.maxWords.toLocaleString('id-ID') + ' kata.';
       if (!hasDescription && (links.length > 0 || section.images.length > 0)) return 'Bagian ' + meta.label + ' memiliki referensi atau foto. Isi deskripsinya sebelum menyimpan.';
       if (section.images.length > meta.imageLimit) return 'Jumlah foto bagian ' + meta.label + ' melebihi batas.';
       let plainTextWords = 0;
       for (const reference of links) {
-        if (/^https?:\/\//i.test(reference)) {
-          try { new URL(reference); }
-          catch { return 'URL bagian ' + meta.label + ' tidak valid.'; }
-        } else {
-          plainTextWords += words(reference);
+        if (isValidHttpReference(reference)) continue;
+        if (/^https?:\/\//i.test(reference) || containsRespectLink(reference)) {
+          return 'Referensi bagian ' + meta.label + ' harus berupa satu URL HTTP/HTTPS yang valid per item, atau teks biasa tanpa URL.';
         }
+        plainTextWords += words(reference);
       }
       if (plainTextWords > 100) return 'Teks biasa pada referensi bagian ' + meta.label + ' maksimal 100 kata total.';
     }

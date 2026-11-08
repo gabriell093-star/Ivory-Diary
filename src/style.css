@@ -2284,3 +2284,5 @@
   .rt-link-remove{width:34px;height:36px}
   .rt-source-links{display:grid;grid-template-columns:minmax(0,1fr)}
 }
+
+.rt-validation-error{display:block;margin-top:7px;color:#b3262e!important;font-size:9px;font-weight:700;line-height:1.55}

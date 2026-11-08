@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowUpRight, BookOpen, ExternalLink, Image as ImageIcon } f
 import { supabase } from './lib';
 
 type MediaItem = { path: string; url: string };
-type ThreadSection = { description: string; link?: string; images: MediaItem[] };
+type ThreadSection = { description: string; links?: string[]; link?: string; images: MediaItem[] };
 type ThreadRecord = {
   id: string;
   slug: string;
@@ -134,13 +134,14 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
           {sectionMeta.map((meta) => {
             const section = thread.sections?.[meta.key];
             if (!section?.description?.trim()) return null;
-            const link = safeHttpUrl(section.link);
+            const rawLinks = Array.isArray(section.links) ? section.links : (section.link ? [section.link] : []);
+            const links = rawLinks.map(link => safeHttpUrl(link)).filter((link): link is string => Boolean(link));
             const images = Array.isArray(section.images) ? section.images : [];
             return (
               <article className="rt-section-card" id={'rt-' + meta.key} key={meta.key}>
                 <div className="rt-section-heading"><span>{meta.index}</span><div><p className="eyebrow">RESPECT THREAD / SECTION {meta.index}</p><h2>{meta.label}</h2></div></div>
                 <div className="rt-section-copy">{section.description.split(/\n{2,}/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
-                {link && <a className="rt-source-link" href={link} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> Buka sumber / referensi <ArrowUpRight size={14} /></a>}
+                {links.length > 0 && <div className="rt-source-links">{links.map((link, index) => <a className="rt-source-link" key={link + '-' + index} href={link} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> {links.length === 1 ? 'Buka sumber / referensi' : 'Buka sumber / referensi ' + (index + 1)} <ArrowUpRight size={14} /></a>)}</div>}
                 {images.length > 0 && <div className="rt-image-grid">{images.map((item, index) => <ThreadImage key={item.path || item.url} item={item} title={thread.title} index={index} />)}</div>}
               </article>
             );

@@ -4,7 +4,7 @@ import ImageCropper from './ImageCropper';
 import { ADMIN_URL, PUBLIC_SUPABASE_KEY, adminRequest } from './lib';
 
 type MediaItem = { path: string; url: string };
-type ThreadSection = { description: string; link?: string; images: MediaItem[] };
+type ThreadSection = { description: string; links?: string[]; images: MediaItem[] };
 type SectionKey = 'introduction' | 'terminology' | 'cosmology' | 'personality' | 'statistic' | 'hax_ability' | 'resistance';
 type ThreadSections = Record<SectionKey, ThreadSection>;
 type ThreadRecord = {
@@ -20,24 +20,24 @@ type ThreadRecord = {
 };
 type Draft = Omit<ThreadRecord, 'id' | 'created_at' | 'updated_at'> & { id?: string };
 
-const sectionMeta: { key: SectionKey; label: string; hint: string; imageLimit: number }[] = [
-  { key: 'introduction', label: 'Introduction', hint: 'Satu gambar pengenalan dan deskripsi singkat karakter.', imageLimit: 1 },
-  { key: 'terminology', label: 'Terminology', hint: 'Uraian istilah, konsep, atau penamaan khusus.', imageLimit: 0 },
-  { key: 'cosmology', label: 'Cosmology', hint: 'Penjelasan struktur dunia, alam, dimensi, atau kosmologi.', imageLimit: 0 },
-  { key: 'personality', label: 'Personality', hint: 'Uraian karakterisasi dan kepribadian.', imageLimit: 0 },
-  { key: 'statistic', label: 'Statistic', hint: 'Statistik dan feat yang mendukung penilaian karakter.', imageLimit: 10 },
-  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Kemampuan khusus, mekanisme, dan penerapannya.', imageLimit: 10 },
-  { key: 'resistance', label: 'Resistance', hint: 'Jenis resistansi dan bukti pendukungnya.', imageLimit: 10 },
+const sectionMeta: { key: SectionKey; label: string; hint: string; imageLimit: number; maxWords: number }[] = [
+  { key: 'introduction', label: 'Introduction', hint: 'Pengenalan karakter dan konteks. Maksimal 2.000 kata.', imageLimit: 1, maxWords: 2000 },
+  { key: 'terminology', label: 'Terminology', hint: 'Uraian istilah, konsep, atau penamaan khusus. Maksimal 5.000 kata.', imageLimit: 0, maxWords: 5000 },
+  { key: 'cosmology', label: 'Cosmology', hint: 'Penjelasan struktur dunia, alam, dimensi, atau kosmologi. Maksimal 5.000 kata.', imageLimit: 0, maxWords: 5000 },
+  { key: 'personality', label: 'Personality', hint: 'Uraian karakterisasi dan kepribadian. Maksimal 5.000 kata.', imageLimit: 0, maxWords: 5000 },
+  { key: 'statistic', label: 'Statistic', hint: 'Statistik dan feat yang mendukung penilaian karakter. Maksimal 5.000 kata.', imageLimit: 10, maxWords: 5000 },
+  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Kemampuan khusus, mekanisme, dan penerapannya. Maksimal 5.000 kata.', imageLimit: 10, maxWords: 5000 },
+  { key: 'resistance', label: 'Resistance', hint: 'Jenis resistansi dan bukti pendukungnya. Maksimal 5.000 kata.', imageLimit: 10, maxWords: 5000 },
 ];
 
 const blankSections = (): ThreadSections => ({
   introduction: { description: '', images: [] },
-  terminology: { description: '', link: '', images: [] },
-  cosmology: { description: '', link: '', images: [] },
-  personality: { description: '', link: '', images: [] },
-  statistic: { description: '', link: '', images: [] },
-  hax_ability: { description: '', link: '', images: [] },
-  resistance: { description: '', link: '', images: [] },
+  terminology: { description: '', links: [], images: [] },
+  cosmology: { description: '', links: [], images: [] },
+  personality: { description: '', links: [], images: [] },
+  statistic: { description: '', links: [], images: [] },
+  hax_ability: { description: '', links: [], images: [] },
+  resistance: { description: '', links: [], images: [] },
 });
 
 const newDraft = (): Draft => ({
@@ -62,7 +62,7 @@ const normalizeSections = (value: unknown): ThreadSections => {
     if (!section || typeof section !== 'object') continue;
     fallback[meta.key] = {
       description: typeof section.description === 'string' ? section.description : '',
-      ...(meta.key === 'introduction' ? {} : { link: typeof section.link === 'string' ? section.link : '' }),
+      ...(meta.key === 'introduction' ? {} : { links: Array.isArray(section.links) ? section.links.filter((link: unknown) => typeof link === 'string') : (typeof section.link === 'string' && section.link.trim() ? [section.link] : []) }),
       images: Array.isArray(section.images) ? section.images.filter((image: any) => image && typeof image.path === 'string' && typeof image.url === 'string').slice(0, meta.imageLimit) : [],
     };
   }
@@ -168,10 +168,6 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       setNotice('Bagian ini tidak menerima foto.');
       return;
     }
-    if (!activeContent.description.trim()) {
-      setNotice('Isi deskripsi bagian ini terlebih dahulu sebelum menambahkan foto.');
-      return;
-    }
     if (activeContent.images.length >= activeMeta.imageLimit) {
       setNotice('Kuota foto untuk bagian ' + activeMeta.label + ' sudah penuh.');
       return;
@@ -220,25 +216,19 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     if (!draft.title.trim()) return 'Judul Respect Thread wajib diisi.';
     if (!draft.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(draft.slug)) return 'Slug harus menggunakan huruf kecil, angka, dan tanda hubung.';
     if (items.some(item => item.slug === draft.slug && item.id !== draft.id)) return 'Slug tersebut sudah digunakan. Silakan ubah alamat halaman.';
-    if (wordCount > 15000) return 'Total seluruh deskripsi maksimal 15.000 kata.';
-    const hasContent = sectionMeta.some(meta => draft.sections[meta.key].description.trim());
-    if (!hasContent) return 'Isi setidaknya satu deskripsi pada salah satu bagian.';
     for (const meta of sectionMeta) {
       const section = draft.sections[meta.key];
       const hasDescription = section.description.trim().length > 0;
-      if (!hasDescription && ((section.link || '').trim() || section.images.length > 0)) {
-        return 'Isi deskripsi pada bagian ' + meta.label + ' sebelum menyimpan link atau foto.';
-      }
+      const links = (section.links || []).map(link => link.trim()).filter(Boolean);
+      if (words(section.description) > meta.maxWords) return 'Bagian ' + meta.label + ' maksimal ' + meta.maxWords.toLocaleString('id-ID') + ' kata.';
+      if (!hasDescription && (links.length > 0 || section.images.length > 0)) return 'Bagian ' + meta.label + ' memiliki link atau foto. Isi deskripsinya sebelum menyimpan.';
       if (section.images.length > meta.imageLimit) return 'Jumlah foto bagian ' + meta.label + ' melebihi batas.';
-      if (section.link?.trim()) {
-        try {
-          const url = new URL(section.link.trim());
-          if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error();
-        } catch {
-          return 'Link bagian ' + meta.label + ' harus berupa alamat HTTP atau HTTPS yang valid.';
-        }
+      for (const link of links) {
+        try { const url = new URL(link); if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(); }
+        catch { return 'Link bagian ' + meta.label + ' harus berupa alamat HTTP atau HTTPS yang valid.'; }
       }
     }
+    if (!sectionMeta.some(meta => draft.sections[meta.key].description.trim())) return 'Isi setidaknya satu deskripsi pada salah satu bagian.';
     return null;
   };
 
@@ -254,7 +244,10 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
         title: draft.title.trim(),
         character_name: draft.character_name.trim(),
         universe: draft.universe.trim(),
-        sections: draft.sections,
+        sections: Object.fromEntries(sectionMeta.map(meta => {
+          const section = draft.sections[meta.key];
+          return [meta.key, { ...section, ...(meta.key === 'introduction' ? {} : { links: (section.links || []).map(link => link.trim()).filter(Boolean) }) }];
+        })) as ThreadSections,
         is_published: draft.is_published,
       };
       if (draft.id) {
@@ -320,26 +313,34 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
             </nav>
 
             <section className="rt-editor-pane">
-              <div className="rt-editor-pane-heading"><div><span className="eyebrow">SECTION {String(sectionMeta.findIndex(x => x.key === activeSection) + 1).padStart(2, '0')}</span><h3>{activeMeta.label}</h3><p>{activeMeta.hint}</p></div><span className="rt-section-word-count">{words(activeContent.description)} kata</span></div>
-              <label className="field rt-description-field"><span>Deskripsi bagian</span><textarea rows={10} maxLength={180000} value={activeContent.description} placeholder={'Tulis penjelasan untuk ' + activeMeta.label + ' di sini…'} onChange={event => updateSection(activeSection, { description: event.target.value })} /><small>Total seluruh bagian: {wordCount.toLocaleString('id-ID')} / 15.000 kata.</small></label>
+              <div className="rt-editor-pane-heading"><div><span className="eyebrow">SECTION {String(sectionMeta.findIndex(x => x.key === activeSection) + 1).padStart(2, '0')}</span><h3>{activeMeta.label}</h3><p>{activeMeta.hint}</p></div><span className={'rt-section-word-count' + (words(activeContent.description) > activeMeta.maxWords ? ' over-limit' : '')}>{words(activeContent.description).toLocaleString('id-ID')} / {activeMeta.maxWords.toLocaleString('id-ID')} kata</span></div>
+              <label className="field rt-description-field"><span>Deskripsi bagian</span><textarea rows={10} maxLength={180000} value={activeContent.description} placeholder={'Tulis penjelasan untuk ' + activeMeta.label + ' di sini…'} onChange={event => updateSection(activeSection, { description: event.target.value })} /><small>Batas berlaku per bagian: Introduction maksimal 2.000 kata, sedangkan setiap bagian lainnya maksimal 5.000 kata.</small></label>
 
-              {activeSection !== 'introduction' && <label className="field rt-link-field"><span><Link2 size={13} /> Link referensi (opsional)</span><input type="url" value={activeContent.link || ''} disabled={!activeContent.description.trim()} placeholder="https://…" onChange={event => updateSection(activeSection, { link: event.target.value })} /><small>Link akan ditampilkan sebagai tautan aktif pada halaman publik. Isi deskripsi sebelum menambahkan link.</small></label>}
+              {activeSection !== 'introduction' && <div className="rt-links-field">
+                <div className="rt-links-field-heading"><span><Link2 size={13} /> Link referensi</span><small>{(activeContent.links || []).filter(link => link.trim()).length} link</small></div>
+                {(activeContent.links || []).map((link, index) => <div className="rt-link-item" key={index}>
+                  <input type="url" value={link} placeholder="https://…" aria-label={'Link referensi ' + (index + 1)} onChange={event => updateSection(activeSection, { links: (activeContent.links || []).map((item, itemIndex) => itemIndex === index ? event.target.value : item) })} />
+                  <button type="button" className="rt-link-remove" aria-label={'Hapus link ' + (index + 1)} onClick={() => updateSection(activeSection, { links: (activeContent.links || []).filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={14} /></button>
+                </div>)}
+                <button type="button" className="rt-add-link" onClick={() => updateSection(activeSection, { links: [...(activeContent.links || []), ''] })}><Plus size={14} /> Tambah link</button>
+                <small>Jumlah link tidak dibatasi. Link boleh ditambahkan sebelum deskripsi; saat menyimpan, setiap bagian yang memiliki link wajib memiliki deskripsi.</small>
+              </div>}
 
               {activeMeta.imageLimit > 0 && <div className="rt-media-field">
-                <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{activeContent.images.length} / {activeMeta.imageLimit} foto · JPG, PNG, WebP</small></div><label className={activeContent.description.trim() && activeContent.images.length < activeMeta.imageLimit ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={!activeContent.description.trim() || activeContent.images.length >= activeMeta.imageLimit || cropBusy} onChange={chooseImage} /></label></div>
-                <p className="rt-media-hint">Video tidak didukung. Foto akan dipotong dan disimpan sebagai JPEG. Deskripsi bagian wajib diisi sebelum foto dapat ditambahkan.</p>
+                <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{activeContent.images.length} / {activeMeta.imageLimit} foto · JPG, PNG, WebP</small></div><label className={activeContent.images.length < activeMeta.imageLimit && !cropBusy ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={activeContent.images.length >= activeMeta.imageLimit || cropBusy} onChange={chooseImage} /></label></div>
+                <p className="rt-media-hint">Video tidak didukung. Foto boleh ditambahkan lebih dulu; deskripsi wajib tersedia saat menyimpan.</p>
                 {activeContent.images.length > 0 && <div className="rt-upload-preview">{activeContent.images.map((image, index) => <figure key={image.path}><img src={image.url} alt={'Foto ' + (index + 1) + ' bagian ' + activeMeta.label} /><button type="button" aria-label="Hapus foto" onClick={() => removeImage(index)}><Trash2 size={13} /></button><figcaption>FOTO {String(index + 1).padStart(2, '0')}</figcaption></figure>)}</div>}
               </div>}
 
               {activeSection === 'introduction' && <div className="rt-intro-photo-note"><ImagePlus size={15} /><span>Introduction hanya menerima satu foto. Deskripsi boleh disimpan tanpa foto.</span></div>}
-              {activeMeta.imageLimit === 0 && activeSection !== 'introduction' && <div className="rt-intro-photo-note"><Link2 size={15} /><span>Bagian ini berisi deskripsi dan satu link referensi opsional. Foto tidak tersedia di bagian ini.</span></div>}
+              {activeMeta.imageLimit === 0 && activeSection !== 'introduction' && <div className="rt-intro-photo-note"><Link2 size={15} /><span>Bagian ini berisi deskripsi dan link referensi tanpa batas. Foto tidak tersedia di bagian ini.</span></div>}
             </section>
           </div>
 
           <div className="rt-editor-footer">
-            <div className="rt-editor-word-total"><span>JUMLAH KATA</span><b className={wordCount > 15000 ? 'over-limit' : ''}>{wordCount.toLocaleString('id-ID')} <small>/ 15.000</small></b><div className="rt-word-track"><span className={wordCount > 15000 ? 'over-limit' : ''} style={{ width: Math.min(100, (wordCount / 15000) * 100) + '%' }} /></div></div>
+            <div className="rt-editor-word-total"><span>TOTAL SELURUH BAGIAN</span><b>{wordCount.toLocaleString('id-ID')} <small>kata</small></b><small>Batas dihitung terpisah untuk tiap bagian.</small></div>
             <label className="rt-publish-toggle"><input type="checkbox" checked={draft.is_published} onChange={event => setDraft(current => current ? ({ ...current, is_published: event.target.checked }) : current)} /><span><b>Publikasikan</b><small>{draft.is_published ? 'Thread dapat dibaca publik setelah disimpan.' : 'Thread disimpan sebagai draft dan tidak terlihat publik.'}</small></span></label>
-            <div className="rt-editor-actions"><button className="button secondary" type="button" onClick={() => void abandonDraft()} disabled={saving || cropBusy}>Batal</button><button className="button primary" type="button" onClick={() => void save()} disabled={saving || cropBusy || wordCount > 15000}><Save size={15} /> {saving ? 'Menyimpan…' : draft.is_published ? 'Simpan & publikasikan' : 'Simpan draft'}</button></div>
+            <div className="rt-editor-actions"><button className="button secondary" type="button" onClick={() => void abandonDraft()} disabled={saving || cropBusy}>Batal</button><button className="button primary" type="button" onClick={() => void save()} disabled={saving || cropBusy}><Save size={15} /> {saving ? 'Menyimpan…' : draft.is_published ? 'Simpan & publikasikan' : 'Simpan draft'}</button></div>
           </div>
         </div>
       ) : (

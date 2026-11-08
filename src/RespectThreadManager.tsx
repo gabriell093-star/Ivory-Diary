@@ -57,13 +57,8 @@ const countThreadImages = (sections: ThreadSections) => sectionMeta.reduce((sum,
 const referenceTextWords = (references: string[]) => references.reduce((sum, value) => {
   const reference = value.trim();
   if (!reference) return sum;
-  try {
-    const parsed = new URL(reference);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return sum;
-    return sum;
-  } catch {
-    return sum + words(reference);
-  }
+  if (/^https?:\/\//i.test(reference)) return sum;
+  return sum + words(reference);
 }, 0);
 const makeSlug = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 160);
 
@@ -244,11 +239,10 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       if (section.images.length > meta.imageLimit) return 'Jumlah foto bagian ' + meta.label + ' melebihi batas.';
       let plainTextWords = 0;
       for (const reference of links) {
-        try {
-          const url = new URL(reference);
-          if (url.protocol !== 'https:' && url.protocol !== 'http:') return 'Referensi URL bagian ' + meta.label + ' harus menggunakan HTTP atau HTTPS.';
-        } catch {
-          if (/^[a-z][a-z0-9+.-]*:\/\//i.test(reference)) return 'URL bagian ' + meta.label + ' tidak valid.';
+        if (/^https?:\/\//i.test(reference)) {
+          try { new URL(reference); }
+          catch { return 'URL bagian ' + meta.label + ' tidak valid.'; }
+        } else {
           plainTextWords += words(reference);
         }
       }
@@ -354,7 +348,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
               </div>}
 
               {activeMeta.imageLimit > 0 && <div className="rt-media-field">
-                <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{activeContent.images.length} / {activeMeta.imageLimit} foto bagian · {countThreadImages(draft.sections)} / 10 total · maks. 3 MB/foto</small></div><label className={activeContent.images.length < activeMeta.imageLimit && !cropBusy ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={activeContent.images.length >= activeMeta.imageLimit || countThreadImages(draft.sections) >= MAX_THREAD_IMAGES || cropBusy} onChange={chooseImage} /></label></div>
+                <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{activeContent.images.length} / {activeMeta.imageLimit} foto bagian · {countThreadImages(draft.sections)} / 10 total · maks. 3 MB/foto</small></div><label className={activeContent.images.length < activeMeta.imageLimit && countThreadImages(draft.sections) < MAX_THREAD_IMAGES && !cropBusy ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={activeContent.images.length >= activeMeta.imageLimit || countThreadImages(draft.sections) >= MAX_THREAD_IMAGES || cropBusy} onChange={chooseImage} /></label></div>
                 <p className="rt-media-hint">Video tidak didukung. Maksimal 10 foto untuk satu thread, dengan ukuran maksimal 3 MB per foto. Foto boleh ditambahkan lebih dulu; deskripsi wajib tersedia saat menyimpan.</p>
                 {activeContent.images.length > 0 && <div className="rt-upload-preview">{activeContent.images.map((image, index) => <figure key={image.path}><img src={image.url} alt={'Foto ' + (index + 1) + ' bagian ' + activeMeta.label} /><button type="button" aria-label="Hapus foto" onClick={() => removeImage(index)}><Trash2 size={13} /></button><figcaption>FOTO {String(index + 1).padStart(2, '0')}</figcaption></figure>)}</div>}
               </div>}

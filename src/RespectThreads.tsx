@@ -167,9 +167,10 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
           : items.length === 0 ? <div className="rt-empty"><span className="eyebrow">ARCHIVE / EMPTY</span><h2>Belum ada Respect Thread.</h2><p>Thread yang telah dipublikasikan akan muncul di halaman ini.</p></div>
             : <div className="rt-list-grid">{items.map((item, index) => {
               const count = sectionMeta.filter(({ key }) => Boolean(item.sections?.[key]?.description?.trim())).length;
+              const cover = item.sections?.introduction?.images?.[0]?.url;
               return (
                 <button type="button" className="rt-list-card" key={item.id} onClick={() => onNavigate('/respect-thread/' + encodeURIComponent(item.slug))}>
-                  <span className="rt-card-number">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="rt-card-cover">{cover ? <img src={cover} alt="" loading="lazy" /> : <BookOpen size={24} />}</span>
                   <div className="rt-card-main">
                     <span className="rt-card-overline">RESPECT THREAD <span>{String(count).padStart(2, '0')} / 07 BAGIAN</span></span>
                     <h2>{item.title}</h2>

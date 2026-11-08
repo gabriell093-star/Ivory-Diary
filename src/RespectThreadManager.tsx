@@ -22,12 +22,12 @@ type Draft = Omit<ThreadRecord, 'id' | 'created_at' | 'updated_at'> & { id?: str
 
 const sectionMeta: { key: SectionKey; label: string; hint: string; imageLimit: number; maxWords: number }[] = [
   { key: 'introduction', label: 'Introduction', hint: 'Pengenalan karakter dan konteks. Maksimal 2.000 kata.', imageLimit: 1, maxWords: 2000 },
-  { key: 'terminology', label: 'Terminology', hint: 'Uraian istilah, konsep, atau penamaan khusus. Maksimal 5.000 kata.', imageLimit: 0, maxWords: 5000 },
-  { key: 'cosmology', label: 'Cosmology', hint: 'Penjelasan struktur dunia, alam, dimensi, atau kosmologi. Maksimal 5.000 kata.', imageLimit: 0, maxWords: 5000 },
-  { key: 'personality', label: 'Personality', hint: 'Uraian karakterisasi dan kepribadian. Maksimal 5.000 kata.', imageLimit: 0, maxWords: 5000 },
-  { key: 'statistic', label: 'Statistic', hint: 'Statistik dan feat yang mendukung penilaian karakter. Maksimal 5.000 kata.', imageLimit: 10, maxWords: 5000 },
-  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Kemampuan khusus, mekanisme, dan penerapannya. Maksimal 5.000 kata.', imageLimit: 10, maxWords: 5000 },
-  { key: 'resistance', label: 'Resistance', hint: 'Jenis resistansi dan bukti pendukungnya. Maksimal 5.000 kata.', imageLimit: 10, maxWords: 5000 },
+  { key: 'terminology', label: 'Terminology', hint: 'Uraian istilah, konsep, atau penamaan khusus. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
+  { key: 'cosmology', label: 'Cosmology', hint: 'Penjelasan struktur dunia, alam, dimensi, atau kosmologi. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
+  { key: 'personality', label: 'Personality', hint: 'Uraian karakterisasi dan kepribadian. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
+  { key: 'statistic', label: 'Statistic', hint: 'Statistik dan feat yang mendukung penilaian karakter. Maksimal 15.000 kata.', imageLimit: 10, maxWords: 15000 },
+  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Kemampuan khusus, mekanisme, dan penerapannya. Maksimal 15.000 kata.', imageLimit: 10, maxWords: 15000 },
+  { key: 'resistance', label: 'Resistance', hint: 'Jenis resistansi dan bukti pendukungnya. Maksimal 15.000 kata.', imageLimit: 10, maxWords: 15000 },
 ];
 
 const blankSections = (): ThreadSections => ({
@@ -49,8 +49,22 @@ const newDraft = (): Draft => ({
   is_published: true,
 });
 
+const MAX_THREAD_IMAGES = 10;
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const words = (value: string) => value.trim() ? value.trim().split(/\s+/u).length : 0;
 const totalWords = (sections: ThreadSections) => sectionMeta.reduce((sum, item) => sum + words(sections[item.key]?.description || ''), 0);
+const countThreadImages = (sections: ThreadSections) => sectionMeta.reduce((sum, item) => sum + (sections[item.key]?.images?.length || 0), 0);
+const referenceTextWords = (references: string[]) => references.reduce((sum, value) => {
+  const reference = value.trim();
+  if (!reference) return sum;
+  try {
+    const parsed = new URL(reference);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return sum;
+    return sum;
+  } catch {
+    return sum + words(reference);
+  }
+}, 0);
 const makeSlug = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 160);
 
 const normalizeSections = (value: unknown): ThreadSections => {
@@ -172,8 +186,12 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       setNotice('Kuota foto untuk bagian ' + activeMeta.label + ' sudah penuh.');
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
-      setNotice('Ukuran foto sumber maksimal 20 MB sebelum crop.');
+    if (file.size > MAX_IMAGE_BYTES) {
+      setNotice('Setiap foto Respect Thread maksimal 3 MB. Pilih file yang lebih kecil.');
+      return;
+    }
+    if (countThreadImages(draft.sections) >= MAX_THREAD_IMAGES) {
+      setNotice('Satu Respect Thread maksimal 10 foto secara keseluruhan.');
       return;
     }
     setNotice('');
@@ -183,8 +201,9 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
   const uploadCroppedImage = async (file: File) => {
     if (!draft) throw new Error('Draft Respect Thread tidak ditemukan.');
     if (file.type !== 'image/jpeg') throw new Error('Foto harus berupa hasil crop JPEG.');
-    if (file.size > 8 * 1024 * 1024) throw new Error('Ukuran hasil crop maksimal 8 MB.');
+    if (file.size > MAX_IMAGE_BYTES) throw new Error('Setiap foto Respect Thread maksimal 3 MB.');
     if (activeContent.images.length >= activeMeta.imageLimit) throw new Error('Batas foto bagian ini sudah tercapai.');
+    if (countThreadImages(draft.sections) >= MAX_THREAD_IMAGES) throw new Error('Satu Respect Thread maksimal 10 foto secara keseluruhan.');
     setCropBusy(true);
     try {
       const form = new FormData();
@@ -221,13 +240,21 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       const hasDescription = section.description.trim().length > 0;
       const links = (section.links || []).map(link => link.trim()).filter(Boolean);
       if (words(section.description) > meta.maxWords) return 'Bagian ' + meta.label + ' maksimal ' + meta.maxWords.toLocaleString('id-ID') + ' kata.';
-      if (!hasDescription && (links.length > 0 || section.images.length > 0)) return 'Bagian ' + meta.label + ' memiliki link atau foto. Isi deskripsinya sebelum menyimpan.';
+      if (!hasDescription && (links.length > 0 || section.images.length > 0)) return 'Bagian ' + meta.label + ' memiliki referensi atau foto. Isi deskripsinya sebelum menyimpan.';
       if (section.images.length > meta.imageLimit) return 'Jumlah foto bagian ' + meta.label + ' melebihi batas.';
-      for (const link of links) {
-        try { const url = new URL(link); if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(); }
-        catch { return 'Link bagian ' + meta.label + ' harus berupa alamat HTTP atau HTTPS yang valid.'; }
+      let plainTextWords = 0;
+      for (const reference of links) {
+        try {
+          const url = new URL(reference);
+          if (url.protocol !== 'https:' && url.protocol !== 'http:') return 'Referensi URL bagian ' + meta.label + ' harus menggunakan HTTP atau HTTPS.';
+        } catch {
+          if (/^[a-z][a-z0-9+.-]*:\/\//i.test(reference)) return 'URL bagian ' + meta.label + ' tidak valid.';
+          plainTextWords += words(reference);
+        }
       }
+      if (plainTextWords > 100) return 'Teks biasa pada referensi bagian ' + meta.label + ' maksimal 100 kata total.';
     }
+    if (countThreadImages(draft.sections) > MAX_THREAD_IMAGES) return 'Satu Respect Thread maksimal 10 foto secara keseluruhan.';
     if (!sectionMeta.some(meta => draft.sections[meta.key].description.trim())) return 'Isi setidaknya satu deskripsi pada salah satu bagian.';
     return null;
   };
@@ -314,25 +341,25 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
 
             <section className="rt-editor-pane">
               <div className="rt-editor-pane-heading"><div><span className="eyebrow">SECTION {String(sectionMeta.findIndex(x => x.key === activeSection) + 1).padStart(2, '0')}</span><h3>{activeMeta.label}</h3><p>{activeMeta.hint}</p></div><span className={'rt-section-word-count' + (words(activeContent.description) > activeMeta.maxWords ? ' over-limit' : '')}>{words(activeContent.description).toLocaleString('id-ID')} / {activeMeta.maxWords.toLocaleString('id-ID')} kata</span></div>
-              <label className="field rt-description-field"><span>Deskripsi bagian</span><textarea rows={10} maxLength={180000} value={activeContent.description} placeholder={'Tulis penjelasan untuk ' + activeMeta.label + ' di sini…'} onChange={event => updateSection(activeSection, { description: event.target.value })} /><small>Batas berlaku per bagian: Introduction maksimal 2.000 kata, sedangkan setiap bagian lainnya maksimal 5.000 kata.</small></label>
+              <label className="field rt-description-field"><span>Deskripsi bagian</span><textarea rows={10} maxLength={500000} value={activeContent.description} placeholder={'Tulis penjelasan untuk ' + activeMeta.label + ' di sini…'} onChange={event => updateSection(activeSection, { description: event.target.value })} /><small>Batas berlaku per bagian: Introduction maksimal 2.000 kata, sedangkan setiap bagian lainnya maksimal 15.000 kata.</small></label>
 
               {activeSection !== 'introduction' && <div className="rt-links-field">
-                <div className="rt-links-field-heading"><span><Link2 size={13} /> Link referensi</span><small>{(activeContent.links || []).filter(link => link.trim()).length} link</small></div>
+                <div className="rt-links-field-heading"><span><Link2 size={13} /> Link & teks referensi</span><small>{(activeContent.links || []).filter(link => link.trim()).length} item · {referenceTextWords(activeContent.links || [])} / 100 kata teks</small></div>
                 {(activeContent.links || []).map((link, index) => <div className="rt-link-item" key={index}>
-                  <input type="url" value={link} placeholder="https://…" aria-label={'Link referensi ' + (index + 1)} onChange={event => updateSection(activeSection, { links: (activeContent.links || []).map((item, itemIndex) => itemIndex === index ? event.target.value : item) })} />
+                  <textarea rows={2} maxLength={10000} value={link} placeholder="https://… atau teks biasa" aria-label={'Referensi ' + (index + 1)} onChange={event => updateSection(activeSection, { links: (activeContent.links || []).map((item, itemIndex) => itemIndex === index ? event.target.value : item) })} />
                   <button type="button" className="rt-link-remove" aria-label={'Hapus link ' + (index + 1)} onClick={() => updateSection(activeSection, { links: (activeContent.links || []).filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={14} /></button>
                 </div>)}
                 <button type="button" className="rt-add-link" onClick={() => updateSection(activeSection, { links: [...(activeContent.links || []), ''] })}><Plus size={14} /> Tambah link</button>
-                <small>Jumlah link tidak dibatasi. Link boleh ditambahkan sebelum deskripsi; saat menyimpan, setiap bagian yang memiliki link wajib memiliki deskripsi.</small>
+                <small>Jumlah URL tidak dibatasi. Setiap bagian boleh memuat teks biasa hingga 100 kata total. Tambahkan referensi sebelum deskripsi bila perlu; deskripsi bagian wajib diisi saat konfirmasi simpan.</small>
               </div>}
 
               {activeMeta.imageLimit > 0 && <div className="rt-media-field">
-                <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{activeContent.images.length} / {activeMeta.imageLimit} foto · JPG, PNG, WebP</small></div><label className={activeContent.images.length < activeMeta.imageLimit && !cropBusy ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={activeContent.images.length >= activeMeta.imageLimit || cropBusy} onChange={chooseImage} /></label></div>
-                <p className="rt-media-hint">Video tidak didukung. Foto boleh ditambahkan lebih dulu; deskripsi wajib tersedia saat menyimpan.</p>
+                <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{activeContent.images.length} / {activeMeta.imageLimit} foto bagian · {countThreadImages(draft.sections)} / 10 total · maks. 3 MB/foto</small></div><label className={activeContent.images.length < activeMeta.imageLimit && !cropBusy ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={activeContent.images.length >= activeMeta.imageLimit || countThreadImages(draft.sections) >= MAX_THREAD_IMAGES || cropBusy} onChange={chooseImage} /></label></div>
+                <p className="rt-media-hint">Video tidak didukung. Maksimal 10 foto untuk satu thread, dengan ukuran maksimal 3 MB per foto. Foto boleh ditambahkan lebih dulu; deskripsi wajib tersedia saat menyimpan.</p>
                 {activeContent.images.length > 0 && <div className="rt-upload-preview">{activeContent.images.map((image, index) => <figure key={image.path}><img src={image.url} alt={'Foto ' + (index + 1) + ' bagian ' + activeMeta.label} /><button type="button" aria-label="Hapus foto" onClick={() => removeImage(index)}><Trash2 size={13} /></button><figcaption>FOTO {String(index + 1).padStart(2, '0')}</figcaption></figure>)}</div>}
               </div>}
 
-              {activeSection === 'introduction' && <div className="rt-intro-photo-note"><ImagePlus size={15} /><span>Introduction hanya menerima satu foto. Deskripsi boleh disimpan tanpa foto.</span></div>}
+              {activeSection === 'introduction' && <div className="rt-intro-photo-note"><ImagePlus size={15} /><span>Introduction hanya menerima satu foto; batas keseluruhan tetap 10 foto per thread dan 3 MB per foto. Deskripsi boleh disimpan tanpa foto.</span></div>}
               {activeMeta.imageLimit === 0 && activeSection !== 'introduction' && <div className="rt-intro-photo-note"><Link2 size={15} /><span>Bagian ini berisi deskripsi dan link referensi tanpa batas. Foto tidak tersedia di bagian ini.</span></div>}
             </section>
           </div>

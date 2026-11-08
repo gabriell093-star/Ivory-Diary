@@ -382,7 +382,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
         </div>
       )}
 
-      {cropFile && <div className="rt-crop-overlay"><div className="rt-crop-dialog"><div className="rt-crop-heading"><span className="eyebrow">RESPECT THREAD / PHOTO STUDIO</span><button type="button" aria-label="Tutup crop foto" onClick={() => !cropBusy && setCropFile(null)} disabled={cropBusy}><X size={17} /></button></div><ImageCropper file={cropFile} busy={cropBusy} onCancel={() => !cropBusy && setCropFile(null)} onComplete={uploadCroppedImage} /></div></div>}
+      {cropFile && <div className="rt-crop-overlay"><div className="rt-crop-dialog"><div className="rt-crop-heading"><span className="eyebrow">RESPECT THREAD / PHOTO STUDIO</span><button type="button" aria-label="Tutup crop foto" onClick={() => !cropBusy && setCropFile(null)} disabled={cropBusy}><X size={17} /></button></div><ImageCropper file={cropFile} busy={cropBusy} maxOutputBytes={MAX_IMAGE_BYTES} onCancel={() => !cropBusy && setCropFile(null)} onComplete={uploadCroppedImage} /></div></div>}
     </section>
   );
 }

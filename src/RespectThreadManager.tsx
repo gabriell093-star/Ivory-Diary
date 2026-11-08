@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { ArrowUpRight, BookOpen, Check, ExternalLink, FilePlus2, ImagePlus, Link2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { BookOpen, Check, ExternalLink, ImagePlus, Link2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import ImageCropper from './ImageCropper';
 import { ADMIN_URL, PUBLIC_SUPABASE_KEY, adminRequest } from './lib';
 

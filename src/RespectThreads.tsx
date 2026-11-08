@@ -27,7 +27,7 @@ const sectionMeta = [
 ] as const;
 
 const safeHttpUrl = (value?: string | null) => {
-  if (!value || /\\s/u.test(value)) return null;
+  if (!value || /\s/u.test(value)) return null;
   try {
     const url = new URL(value);
     return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;

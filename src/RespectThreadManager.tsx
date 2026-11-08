@@ -51,11 +51,11 @@ const newDraft = (): Draft => ({
 
 const MAX_THREAD_IMAGES = 10;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
-const RESPECT_LINK_PATTERN = /(?:\\b[a-z][a-z0-9+.-]*:\\/\\/[^\\s<>()]+|\\bwww\\.[^\\s<>()]+|(?<![\\w@.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}(?::\\d+)?(?:\\/[^\\s<>()]*)?)/iu;
-const words = (value: string) => value.trim() ? value.trim().split(/\\s+/u).length : 0;
+const RESPECT_LINK_PATTERN = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+|(?<![\w@.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>()]*)?)/iu;
+const words = (value: string) => value.trim() ? value.trim().split(/\s+/u).length : 0;
 const containsRespectLink = (value: string) => RESPECT_LINK_PATTERN.test(value);
 const isValidHttpReference = (value: string) => {
-  if (!/^https?:\\/\\//i.test(value)) return false;
+  if (!/^https?:\/\//i.test(value) || /\s/u.test(value)) return false;
   try {
     const parsed = new URL(value);
     return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && Boolean(parsed.hostname);

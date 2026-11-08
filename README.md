@@ -21,12 +21,14 @@ Folder `supabase/migrations` menyimpan skema, indeks, dan kebijakan akses yang d
 
 ## Halaman publik dan tautan berbagi
 
-Website menggunakan empat route terpisah:
+Website menggunakan route terpisah:
 
 - `/` — Beranda
 - `/layanan` — Katalog dan order layanan
 - `/testimoni` — Galeri hasil pekerjaan
 - `/staff` — Profil staf
+- `/respect-thread` — Arsip Respect Thread publik
+- `/respect-thread/:slug` — Pembaca detail Respect Thread
 
 Konfigurasi `vercel.json` mengarahkan direct URL dan refresh halaman ke aplikasi Vite. Metadata Open Graph dan Twitter berada di `index.html`; gambar share 1200×630 berada di `public/og-ivory-diary.png`. Jika Vercel terhubung ke GitHub, perubahan branch `main` perlu dipublikasikan melalui deployment terbaru. Platform pesan dapat menyimpan cache preview lama untuk sementara.
 
@@ -36,7 +38,7 @@ Akun Owner hanya dibuat melalui SQL Editor Supabase. File `supabase/owner-setup.
 
 ## Dashboard Owner
 
-Buka tautan **Owner access** di footer. Owner dapat mengelola layanan, testimoni (termasuk beberapa foto), staf, dan konten website. Setelah selesai mengedit, pilih **Keluar** agar halaman publik memuat data terbaru.
+Buka tautan **Owner access** di footer. Owner dapat mengelola layanan, testimoni (termasuk beberapa foto), staf, konten website, dan Respect Thread. Respect Thread memiliki tujuh bagian, batas 15.000 kata total, tautan referensi HTTP(S), foto JPEG hasil crop, serta status publik/draft. Data hanya dapat ditulis melalui Edge Function dengan sesi Owner; pengunjung hanya dapat membaca thread yang dipublikasikan. Setelah selesai mengedit, pilih **Keluar** agar halaman publik memuat data terbaru.
 
 ## Build dan publikasi Vercel
 

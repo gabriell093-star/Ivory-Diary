@@ -149,7 +149,7 @@ function App(){
   }finally{setCropBusy(false)}
 };
  const removeImage=(index:number)=>{if(!editing)return;updateField('image_urls',(editing.image_urls||[]).filter((_:string,i:number)=>i!==index));updateField('image_paths',(editing.image_paths||[]).filter((_:string,i:number)=>i!==index))};
- const respectThreadMatch=path.match(/^\\/respect-thread(?:\\/([^/]+))?$/);
+ const respectThreadMatch=path.match(/^\/respect-thread(?:\/([^/]+))?$/);
  const respectThreadSlug=respectThreadMatch?.[1];
  const page=path==='/'?'home':path==='/layanan'?'services':path==='/testimoni'?'testimonials':path==='/staff'?'staff':path==='/flip-coin'?'flip-coin':respectThreadMatch?(respectThreadSlug?'respect-thread-detail':'respect-threads'):'not-found';
  const navigate=(to:string)=>{const next=to.replace(new RegExp('/+$'),'')||'/';if(next!==path){window.history.pushState({},'',next);setPath(next)}setMenuOpen(false);setModal(null);window.scrollTo({top:0,behavior:'smooth'})};

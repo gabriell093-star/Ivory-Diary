@@ -177,12 +177,12 @@ const respectImageLimits: Record<string, number> = {
 };
 const respectSectionWordLimits: Record<string, number> = {
   introduction: 2000,
-  terminology: 5000,
-  cosmology: 5000,
-  personality: 5000,
-  statistic: 5000,
-  hax_ability: 5000,
-  resistance: 5000,
+  terminology: 15000,
+  cosmology: 15000,
+  personality: 15000,
+  statistic: 15000,
+  hax_ability: 15000,
+  resistance: 15000,
 };
 
 function respectDescriptionWordCount(description: string): number {
@@ -212,6 +212,7 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
     throw new RequestBodyError("Struktur tujuh bagian Respect Thread tidak lengkap.", 400);
   }
 
+  let threadImageCount = 0;
   for (const key of respectSectionKeys) {
     const section = raw[key];
     if (!isRecord(section)) throw new RequestBodyError("Bagian " + key + " tidak valid.", 400);
@@ -223,7 +224,7 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
     }
 
     const description = section.description;
-    if (typeof description !== "string" || description.length > 180000) {
+    if (typeof description !== "string" || description.length > 500000) {
       throw new RequestBodyError("Deskripsi pada bagian " + key + " tidak valid.", 400);
     }
     if (respectDescriptionWordCount(description) > respectSectionWordLimits[key]) {
@@ -249,25 +250,36 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
     }
 
     const nonEmptyLinks: string[] = [];
+    let plainTextWords = 0;
     for (const candidate of links) {
-      if (typeof candidate !== "string" || candidate.length > 2048) {
-        throw new RequestBodyError("Link pada bagian " + key + " tidak valid.", 400);
+      if (typeof candidate !== "string" || candidate.length > 10000) {
+        throw new RequestBodyError("Referensi pada bagian " + key + " tidak valid.", 400);
       }
       const link = candidate.trim();
       if (!link) continue;
-      try {
-        const parsed = new URL(link);
-        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("Protocol is not allowed");
-      } catch {
-        throw new RequestBodyError("Link harus berupa alamat HTTP atau HTTPS yang valid.", 400);
+      let parsed: URL | null = null;
+      try { parsed = new URL(link); } catch { /* Non-URL reference text is supported. */ }
+      if (parsed) {
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+          throw new RequestBodyError("URL referensi harus menggunakan HTTP atau HTTPS.", 400);
+        }
+      } else {
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(link)) {
+          throw new RequestBodyError("URL referensi pada bagian " + key + " tidak valid.", 400);
+        }
+        plainTextWords += respectDescriptionWordCount(link);
       }
       nonEmptyLinks.push(link);
+    }
+    if (plainTextWords > 100) {
+      throw new RequestBodyError("Teks biasa pada referensi bagian " + key + " maksimal 100 kata total.", 400);
     }
 
     const images = section.images;
     if (!Array.isArray(images) || images.length > respectImageLimits[key]) {
       throw new RequestBodyError("Jumlah foto pada bagian " + key + " melebihi batas.", 400);
     }
+    threadImageCount += images.length;
     for (const image of images) {
       if (!isRecord(image) || Object.keys(image).some(field => field !== "path" && field !== "url") ||
           typeof image.path !== "string" || typeof image.url !== "string") {
@@ -283,6 +295,9 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
     if (!hasDescription && (nonEmptyLinks.length > 0 || images.length > 0)) {
       throw new RequestBodyError("Isi deskripsi pada bagian " + key + " sebelum menyimpan link atau foto.", 400);
     }
+  }
+  if (threadImageCount > 10) {
+    throw new RequestBodyError("Satu Respect Thread maksimal 10 foto secara keseluruhan.", 400);
   }
 
   return raw;
@@ -401,7 +416,7 @@ Deno.serve(async (req: Request) => {
     let body: Record<string, unknown> = {};
     if (req.method !== "GET" && queryAction !== "upload") {
       try {
-        body = await readJsonBody(req, 1_500_000);
+        body = await readJsonBody(req, 4_000_000);
       } catch (error) {
         if (error instanceof RequestBodyError) return respond({ error: error.message }, error.status);
         return respond({ error: "Format permintaan tidak valid." }, 400);
@@ -516,17 +531,22 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "upload" && req.method === "POST") {
-      const maxFileBytes = 8 * 1024 * 1024;
+      // The shared bucket and non-Respect-Thread uploads retain their existing 8 MB cap.
+      const maxRequestFileBytes = 8 * 1024 * 1024;
       const declaredLength = Number(req.headers.get("content-length") || 0);
-      if (Number.isFinite(declaredLength) && declaredLength > maxFileBytes + 128 * 1024) {
+      if (Number.isFinite(declaredLength) && declaredLength > maxRequestFileBytes + 128 * 1024) {
         return respond({ error: "Ukuran foto terlalu besar. Maksimal 8 MB setelah crop." }, 413);
       }
       let form: FormData;
-      try { form = await readBoundedFormData(req, maxFileBytes + 128 * 1024); }
+      try { form = await readBoundedFormData(req, maxRequestFileBytes + 128 * 1024); }
       catch (error) {
         if (error instanceof RequestBodyError) return respond({ error: error.message }, error.status);
         return respond({ error: "Form upload tidak valid. Silakan pilih ulang fotonya." }, 400);
       }
+      const folder = String(form.get("folder") || "").trim();
+      if (folder && folder !== "respect-threads") return respond({ error: "Folder upload tidak diizinkan." }, 400);
+      const maxFileBytes = folder === "respect-threads" ? 3 * 1024 * 1024 : maxRequestFileBytes;
+      const maxFileLabel = folder === "respect-threads" ? "3 MB" : "8 MB";
       const uploadedFile = form.get("file");
       if (!(uploadedFile instanceof File)) return respond({ error: "File foto tidak ditemukan pada permintaan upload." }, 400);
       const fileName = String(form.get("fileName") || uploadedFile.name || "ivory-photo.jpg")
@@ -536,22 +556,20 @@ Deno.serve(async (req: Request) => {
         return respond({ error: "Hasil crop harus berupa JPEG." }, 400);
       }
       if (uploadedFile.size < 4 || uploadedFile.size > maxFileBytes) {
-        return respond({ error: "Ukuran foto maksimal 8 MB setelah crop." }, 413);
+        return respond({ error: "Ukuran foto maksimal " + maxFileLabel + " setelah crop." }, 413);
       }
       const binary = new Uint8Array(await uploadedFile.arrayBuffer());
       if (binary.length < 4 || binary[0] !== 0xff || binary[1] !== 0xd8 || binary[2] !== 0xff ||
           binary[binary.length - 2] !== 0xff || binary[binary.length - 1] !== 0xd9) {
         return respond({ error: "File bukan gambar JPEG yang valid. Silakan crop ulang." }, 400);
       }
-      const folder = String(form.get("folder") || "").trim();
-      if (folder && folder !== "respect-threads") return respond({ error: "Folder upload tidak diizinkan." }, 400);
       const path = (folder ? folder + "/" : "") + Date.now() + "-" + crypto.randomUUID() + "-" + fileName;
       const { error: storageError } = await db.storage.from("ivory-public").upload(path, binary, {
         contentType: mime, cacheControl: "31536000", upsert: false,
       });
       if (storageError) {
         console.error("Ivory media upload failed:", storageError.message);
-        return respond({ error: "Storage menolak foto. Pastikan ukuran akhir maksimal 8 MB, lalu coba lagi." }, 502);
+        return respond({ error: "Storage menolak foto. Pastikan ukuran akhir maksimal " + maxFileLabel + ", lalu coba lagi." }, 502);
       }
       const { data } = db.storage.from("ivory-public").getPublicUrl(path);
       return respond({ path, url: data.publicUrl });

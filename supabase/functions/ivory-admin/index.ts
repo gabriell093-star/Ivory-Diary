@@ -192,7 +192,7 @@ function containsRespectLink(value: string): boolean {
 }
 
 function isValidHttpReference(value: string): boolean {
-  if (!/^https?:\/\//i.test(value)) return false;
+  if (!/^https?:\/\//i.test(value) || /\s/u.test(value)) return false;
   try {
     const parsed = new URL(value);
     return (parsed.protocol === "https:" || parsed.protocol === "http:") && Boolean(parsed.hostname);

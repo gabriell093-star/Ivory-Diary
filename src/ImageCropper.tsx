@@ -11,6 +11,7 @@ type Props = {
   onComplete: (file: File) => Promise<void> | void;
   busy?: boolean;
   aspectRatio?: number;
+  maxOutputBytes?: number;
 };
 
 const presetNames: Record<Preset, string> = {
@@ -22,7 +23,7 @@ const presetNames: Record<Preset, string> = {
   landscape: '16 : 9',
 };
 
-export default function ImageCropper({ file, onCancel, onComplete, busy = false, aspectRatio }: Props) {
+export default function ImageCropper({ file, onCancel, onComplete, busy = false, aspectRatio, maxOutputBytes = 8 * 1024 * 1024 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -349,8 +350,9 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
         setError('Gagal membuat hasil crop. Coba lagi.');
         return;
       }
-      if (blob.size > 8 * 1024 * 1024) {
-        setError('Hasil foto terlalu besar. Perkecil area crop lalu coba lagi.');
+      if (blob.size > maxOutputBytes) {
+        const maxMb = (maxOutputBytes / (1024 * 1024)).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+        setError('Hasil foto terlalu besar. Ukuran maksimal ' + maxMb + ' MB; perkecil area crop lalu coba lagi.');
         return;
       }
       const cropped = new File(

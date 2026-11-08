@@ -185,6 +185,22 @@ const respectSectionWordLimits: Record<string, number> = {
   resistance: 15000,
 };
 
+const respectLinkPattern = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+|(?<![\w@.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>()]*)?)/iu;
+
+function containsRespectLink(value: string): boolean {
+  return respectLinkPattern.test(value);
+}
+
+function isValidHttpReference(value: string): boolean {
+  if (!/^https?:\/\//i.test(value)) return false;
+  try {
+    const parsed = new URL(value);
+    return (parsed.protocol === "https:" || parsed.protocol === "http:") && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function respectDescriptionWordCount(description: string): number {
   const trimmed = description.trim();
   return trimmed ? (trimmed.match(/\S+/g) || []).length : 0;
@@ -227,6 +243,9 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
     if (typeof description !== "string" || description.length > 500000) {
       throw new RequestBodyError("Deskripsi pada bagian " + key + " tidak valid.", 400);
     }
+    if (containsRespectLink(description)) {
+      throw new RequestBodyError("Deskripsi bagian " + key + " tidak boleh mengandung URL atau tautan. Pindahkan ke bagian Link & teks referensi.", 400);
+    }
     if (respectDescriptionWordCount(description) > respectSectionWordLimits[key]) {
       throw new RequestBodyError("Deskripsi bagian " + key + " maksimal " + respectSectionWordLimits[key].toLocaleString("id-ID") + " kata.", 400);
     }
@@ -257,17 +276,12 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
       }
       const link = candidate.trim();
       if (!link) continue;
-      if (/^https?:\/\//i.test(link)) {
-        try {
-          const parsed = new URL(link);
-          if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-            throw new Error("Protocol is not allowed");
-          }
-        } catch {
-          throw new RequestBodyError("URL referensi pada bagian " + key + " tidak valid.", 400);
-        }
+      if (isValidHttpReference(link)) {
+        // A URL must be a standalone item, separate from any explanatory text.
+      } else if (/^https?:\/\//i.test(link) || containsRespectLink(link)) {
+        throw new RequestBodyError("Referensi pada bagian " + key + " harus berupa satu URL HTTP/HTTPS yang valid per item, atau teks biasa tanpa URL.", 400);
       } else {
-        // Non-URL content (including ordinary prose with colons) is plain reference text.
+        // Non-URL content is allowed as plain reference text.
         plainTextWords += respectDescriptionWordCount(link);
       }
       nonEmptyLinks.push(link);

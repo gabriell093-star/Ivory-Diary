@@ -327,7 +327,7 @@ function validateRespectEvidenceEntries(raw: unknown, label: string): RespectCon
       if (typeof feat.description !== "string" || !feat.description.trim()) {
         throw new RequestBodyError("Setiap feat pada " + label + " wajib memiliki deskripsi.", 400);
       }
-      const result = validateRespectContent(feat, label + " / Feat " + (featIndex + 1));
+      const result = validateRespectContent(feat, label + " / Feat " + (featIndex + 1), { extraKeys: ["id"] });
       words += result.words;
       images += result.images;
     }

@@ -185,7 +185,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
 
         <div className="rt-detail-content">
           {sectionMeta.map(meta => {
-            const section = thread.sections?.[meta.key] || {};
+            const section: ThreadSection = thread.sections?.[meta.key] || { description: '', images: [] };
             if (!sectionIsFilled(section, meta.key)) return null;
             return (
               <article className="rt-section-card" id={'rt-' + meta.key} key={meta.key}>

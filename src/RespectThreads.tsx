@@ -192,7 +192,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
                 <div className="rt-section-heading"><span>{meta.index}</span><div><p className="eyebrow">RESPECT THREAD / SECTION {meta.index}</p><h2>{meta.label}</h2></div></div>
 
                 {meta.key === 'statistic' ? <>
-                  <PublicContentBlock content={section} title="Statistical overview" threadTitle={thread.title} />
+                  {contentIsFilled(section) && <div className="rt-stat-overview"><PublicContentBlock content={section} title="Statistical overview" threadTitle={thread.title} /></div>}
                   <div className="rt-stat-public-list" aria-label="Empat kategori statistik">
                     {statMeta.map(category => {
                       const content = section.categories?.[category.key];
@@ -209,7 +209,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
                     })}
                   </div>
                 </> : meta.key === 'resistance' || meta.key === 'hax_ability' ? <>
-                  <PublicContentBlock content={section} title="General notes" threadTitle={thread.title} />
+                  {contentIsFilled(section) && <div className="rt-evidence-general-notes"><PublicContentBlock content={section} title="General notes" threadTitle={thread.title} /></div>}
                   <div className="rt-evidence-public-list">
                     {(section.entries || []).map((entry, entryIndex) => <article className="rt-evidence-public-card" key={entry.id || entryIndex}>
                       <header className="rt-evidence-public-heading">

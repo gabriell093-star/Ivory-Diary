@@ -165,21 +165,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-const respectSectionKeys = ["introduction", "terminology", "cosmology", "personality", "statistic", "hax_ability", "resistance"] as const;
-const respectImageLimits: Record<string, number> = {
-  introduction: 1,
-  terminology: 0,
-  cosmology: 0,
-  personality: 0,
-  statistic: 10,
-  hax_ability: 10,
-  resistance: 10,
-};
+const legacyRespectSectionKeys = ["introduction", "terminology", "cosmology", "personality", "statistic", "hax_ability", "resistance"] as const;
+const respectSectionKeys = [...legacyRespectSectionKeys, "in_char"] as const;
+const statisticMetricKeys = ["attack_potency", "durability", "speed", "stamina"] as const;
 const respectSectionWordLimits: Record<string, number> = {
   introduction: 2000,
   terminology: 15000,
   cosmology: 15000,
   personality: 15000,
+  in_char: 15000,
   statistic: 15000,
   hax_ability: 15000,
   resistance: 15000,
@@ -207,114 +201,191 @@ function respectDescriptionWordCount(description: string): number {
 }
 
 function respectThreadImagePaths(sections: unknown): string[] {
-  if (!isRecord(sections)) return [];
   const paths: string[] = [];
-  for (const key of respectSectionKeys) {
-    const section = sections[key];
-    if (!isRecord(section) || !Array.isArray(section.images)) continue;
-    for (const image of section.images) {
-      if (isRecord(image)) {
-        const path = safeStoragePath(image.path);
-        if (path) paths.push(path);
-      }
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const child of value) visit(child);
+      return;
     }
-  }
+    if (!isRecord(value)) return;
+    if (typeof value.path === "string" && typeof value.url === "string") {
+      const path = safeStoragePath(value.path);
+      if (path && path.startsWith("respect-threads/") && storagePathFromPublicUrl(value.url) === path) paths.push(path);
+    }
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(sections);
   return [...new Set(paths)];
 }
 
+type RespectContentValidation = { words: number; images: number };
+
+function validateRespectContent(
+  raw: unknown,
+  label: string,
+  options: { allowLinks?: boolean; imageLimit?: number; extraKeys?: string[] } = {},
+): RespectContentValidation {
+  const allowLinks = options.allowLinks !== false;
+  const imageLimit = options.imageLimit ?? 10;
+  const extraKeys = options.extraKeys || [];
+  if (!isRecord(raw)) throw new RequestBodyError("Konten " + label + " tidak valid.", 400);
+  const allowedKeys = ["description", "images", ...(allowLinks ? ["link", "links"] : []), ...extraKeys];
+  if (Object.keys(raw).some(field => !allowedKeys.includes(field))) {
+    throw new RequestBodyError("Ada kolom yang tidak diizinkan pada konten " + label + ".", 400);
+  }
+
+  const description = raw.description;
+  if (typeof description !== "string" || description.length > 500000) {
+    throw new RequestBodyError("Deskripsi pada " + label + " tidak valid.", 400);
+  }
+  if (containsRespectLink(description)) {
+    throw new RequestBodyError("Deskripsi " + label + " tidak boleh mengandung URL atau tautan. Pindahkan ke Link & teks referensi.", 400);
+  }
+
+  const links: unknown[] = [];
+  if (allowLinks) {
+    if (raw.links !== undefined) {
+      if (!Array.isArray(raw.links)) throw new RequestBodyError("Daftar link pada " + label + " tidak valid.", 400);
+      links.push(...raw.links);
+    }
+    // Backward compatibility: older sections stored one link string.
+    if (raw.link !== undefined && raw.link !== null && raw.link !== "") {
+      if (typeof raw.link !== "string") throw new RequestBodyError("Link pada " + label + " tidak valid.", 400);
+      if (!Array.isArray(raw.links)) links.push(raw.link);
+    }
+  }
+
+  let plainTextWords = 0;
+  let nonEmptyLinks = 0;
+  for (const candidate of links) {
+    if (typeof candidate !== "string" || candidate.length > 10000) {
+      throw new RequestBodyError("Referensi pada " + label + " tidak valid.", 400);
+    }
+    const reference = candidate.trim();
+    if (!reference) continue;
+    nonEmptyLinks++;
+    if (isValidHttpReference(reference)) continue;
+    if (/^https?:\/\//i.test(reference) || containsRespectLink(reference)) {
+      throw new RequestBodyError("Referensi " + label + " harus berupa satu URL HTTP/HTTPS yang valid per item, atau teks biasa tanpa URL.", 400);
+    }
+    plainTextWords += respectDescriptionWordCount(reference);
+  }
+  if (plainTextWords > 100) {
+    throw new RequestBodyError("Teks biasa pada referensi " + label + " maksimal 100 kata total.", 400);
+  }
+
+  const images = raw.images;
+  if (!Array.isArray(images) || images.length > imageLimit) {
+    throw new RequestBodyError("Jumlah foto pada " + label + " melebihi batas.", 400);
+  }
+  for (const image of images) {
+    if (!isRecord(image) || Object.keys(image).some(field => field !== "path" && field !== "url") ||
+        typeof image.path !== "string" || typeof image.url !== "string") {
+      throw new RequestBodyError("Data foto pada " + label + " tidak valid.", 400);
+    }
+    const path = safeStoragePath(image.path);
+    if (!path || !path.startsWith("respect-threads/") || storagePathFromPublicUrl(image.url) !== path) {
+      throw new RequestBodyError("Alamat foto Respect Thread tidak valid.", 400);
+    }
+  }
+
+  // Empty descriptions are allowed while drafting; validation is enforced on final save.
+  if (!description.trim() && (nonEmptyLinks > 0 || images.length > 0)) {
+    throw new RequestBodyError("Isi deskripsi " + label + " sebelum menyimpan link atau foto.", 400);
+  }
+
+  return { words: respectDescriptionWordCount(description), images: images.length };
+}
+
+function validateRespectEvidenceEntries(raw: unknown, label: string): RespectContentValidation {
+  if (raw === undefined) return { words: 0, images: 0 };
+  if (!Array.isArray(raw) || raw.length > 1000) {
+    throw new RequestBodyError("Daftar entri " + label + " tidak valid.", 400);
+  }
+  let words = 0;
+  let images = 0;
+  for (let entryIndex = 0; entryIndex < raw.length; entryIndex++) {
+    const entry = raw[entryIndex];
+    if (!isRecord(entry) || Object.keys(entry).some(field => !["id", "name", "feats"].includes(field))) {
+      throw new RequestBodyError("Entri " + label + " ke-" + (entryIndex + 1) + " tidak valid.", 400);
+    }
+    if (typeof entry.id !== "string" || !entry.id.trim() || entry.id.length > 100 ||
+        typeof entry.name !== "string" || !entry.name.trim() || entry.name.length > 160) {
+      throw new RequestBodyError("Setiap entri " + label + " wajib memiliki nama yang valid.", 400);
+    }
+    if (!Array.isArray(entry.feats) || entry.feats.length < 1 || entry.feats.length > 1000) {
+      throw new RequestBodyError("Setiap entri " + label + " harus memiliki minimal satu feat pendukung.", 400);
+    }
+    for (let featIndex = 0; featIndex < entry.feats.length; featIndex++) {
+      const feat = entry.feats[featIndex];
+      if (!isRecord(feat) || Object.keys(feat).some(field => !["id", "description", "links", "link", "images"].includes(field))) {
+        throw new RequestBodyError("Feat pada " + label + " tidak valid.", 400);
+      }
+      if (typeof feat.id !== "string" || !feat.id.trim() || feat.id.length > 100) {
+        throw new RequestBodyError("Identitas feat pada " + label + " tidak valid.", 400);
+      }
+      if (typeof feat.description !== "string" || !feat.description.trim()) {
+        throw new RequestBodyError("Setiap feat pada " + label + " wajib memiliki deskripsi.", 400);
+      }
+      const result = validateRespectContent(feat, label + " / Feat " + (featIndex + 1));
+      words += result.words;
+      images += result.images;
+    }
+  }
+  return { words, images };
+}
+
 function validateRespectSections(raw: unknown): Record<string, unknown> {
-  if (!isRecord(raw) || Object.keys(raw).length !== respectSectionKeys.length ||
-      respectSectionKeys.some(key => !Object.prototype.hasOwnProperty.call(raw, key))) {
-    throw new RequestBodyError("Struktur tujuh bagian Respect Thread tidak lengkap.", 400);
+  if (!isRecord(raw) ||
+      legacyRespectSectionKeys.some(key => !Object.prototype.hasOwnProperty.call(raw, key)) ||
+      Object.keys(raw).some(key => !respectSectionKeys.includes(key as typeof respectSectionKeys[number]))) {
+    throw new RequestBodyError("Struktur Respect Thread tidak lengkap atau mengandung bagian yang tidak dikenal.", 400);
   }
 
   let threadImageCount = 0;
   for (const key of respectSectionKeys) {
+    if (!Object.prototype.hasOwnProperty.call(raw, key)) continue; // Older seven-section threads remain readable and editable.
     const section = raw[key];
     if (!isRecord(section)) throw new RequestBodyError("Bagian " + key + " tidak valid.", 400);
-    const allowedKeys = key === "introduction"
-      ? ["description", "images"]
-      : ["description", "link", "links", "images"];
-    if (Object.keys(section).some(field => !allowedKeys.includes(field))) {
-      throw new RequestBodyError("Ada kolom yang tidak diizinkan pada bagian " + key + ".", 400);
-    }
 
-    const description = section.description;
-    if (typeof description !== "string" || description.length > 500000) {
-      throw new RequestBodyError("Deskripsi pada bagian " + key + " tidak valid.", 400);
-    }
-    if (containsRespectLink(description)) {
-      throw new RequestBodyError("Deskripsi bagian " + key + " tidak boleh mengandung URL atau tautan. Pindahkan ke bagian Link & teks referensi.", 400);
-    }
-    if (respectDescriptionWordCount(description) > respectSectionWordLimits[key]) {
-      throw new RequestBodyError("Deskripsi bagian " + key + " maksimal " + respectSectionWordLimits[key].toLocaleString("id-ID") + " kata.", 400);
-    }
-    const hasDescription = description.trim().length > 0;
+    const isStatistic = key === "statistic";
+    const isEvidence = key === "resistance" || key === "hax_ability";
+    const extraKeys = isStatistic ? ["categories"] : isEvidence ? ["entries"] : [];
+    const base = validateRespectContent(section, key, {
+      allowLinks: key !== "introduction",
+      imageLimit: key === "introduction" ? 1 : 10,
+      extraKeys,
+    });
+    let sectionWords = base.words;
+    threadImageCount += base.images;
 
-    const links: unknown[] = [];
-    if (key !== "introduction") {
-      if (section.links !== undefined) {
-        if (!Array.isArray(section.links)) {
-          throw new RequestBodyError("Daftar link pada bagian " + key + " tidak valid.", 400);
-        }
-        links.push(...section.links);
+    if (isStatistic && section.categories !== undefined) {
+      if (!isRecord(section.categories) ||
+          Object.keys(section.categories).length !== statisticMetricKeys.length ||
+          statisticMetricKeys.some(metric => !Object.prototype.hasOwnProperty.call(section.categories, metric))) {
+        throw new RequestBodyError("Empat kategori Statistics harus tersedia secara terpisah.", 400);
       }
-      // Backward compatibility: older Respect Threads stored one legacy link string.
-      if (section.link !== undefined && section.link !== null && section.link !== "") {
-        if (typeof section.link !== "string") {
-          throw new RequestBodyError("Link pada bagian " + key + " tidak valid.", 400);
-        }
-        if (!Array.isArray(section.links)) links.push(section.link);
+      for (const metric of statisticMetricKeys) {
+        const result = validateRespectContent(section.categories[metric], "Statistics / " + metric);
+        sectionWords += result.words;
+        threadImageCount += result.images;
       }
     }
 
-    const nonEmptyLinks: string[] = [];
-    let plainTextWords = 0;
-    for (const candidate of links) {
-      if (typeof candidate !== "string" || candidate.length > 10000) {
-        throw new RequestBodyError("Referensi pada bagian " + key + " tidak valid.", 400);
-      }
-      const link = candidate.trim();
-      if (!link) continue;
-      if (isValidHttpReference(link)) {
-        // A URL must be a standalone item, separate from any explanatory text.
-      } else if (/^https?:\/\//i.test(link) || containsRespectLink(link)) {
-        throw new RequestBodyError("Referensi pada bagian " + key + " harus berupa satu URL HTTP/HTTPS yang valid per item, atau teks biasa tanpa URL.", 400);
-      } else {
-        // Non-URL content is allowed as plain reference text.
-        plainTextWords += respectDescriptionWordCount(link);
-      }
-      nonEmptyLinks.push(link);
-    }
-    if (plainTextWords > 100) {
-      throw new RequestBodyError("Teks biasa pada referensi bagian " + key + " maksimal 100 kata total.", 400);
+    if (isEvidence) {
+      const evidence = validateRespectEvidenceEntries(section.entries, key);
+      sectionWords += evidence.words;
+      threadImageCount += evidence.images;
     }
 
-    const images = section.images;
-    if (!Array.isArray(images) || images.length > respectImageLimits[key]) {
-      throw new RequestBodyError("Jumlah foto pada bagian " + key + " melebihi batas.", 400);
-    }
-    threadImageCount += images.length;
-    for (const image of images) {
-      if (!isRecord(image) || Object.keys(image).some(field => field !== "path" && field !== "url") ||
-          typeof image.path !== "string" || typeof image.url !== "string") {
-        throw new RequestBodyError("Data foto pada bagian " + key + " tidak valid.", 400);
-      }
-      const path = safeStoragePath(image.path);
-      if (!path || !path.startsWith("respect-threads/") || storagePathFromPublicUrl(image.url) !== path) {
-        throw new RequestBodyError("Alamat foto Respect Thread tidak valid.", 400);
-      }
-    }
-
-    // Link and photos may be staged while editing; the final save requires a description.
-    if (!hasDescription && (nonEmptyLinks.length > 0 || images.length > 0)) {
-      throw new RequestBodyError("Isi deskripsi pada bagian " + key + " sebelum menyimpan link atau foto.", 400);
+    if (sectionWords > respectSectionWordLimits[key]) {
+      throw new RequestBodyError("Bagian " + key + " maksimal " + respectSectionWordLimits[key].toLocaleString("id-ID") + " kata secara keseluruhan.", 400);
     }
   }
+
   if (threadImageCount > 10) {
     throw new RequestBodyError("Satu Respect Thread maksimal 10 foto secara keseluruhan.", 400);
   }
-
   return raw;
 }
 

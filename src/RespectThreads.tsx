@@ -193,11 +193,17 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
 
                 {meta.key === 'statistic' ? <>
                   <PublicContentBlock content={section} title="Statistical overview" threadTitle={thread.title} />
-                  <div className="rt-stat-public-list">
+                  <div className="rt-stat-public-list" aria-label="Empat kategori statistik">
                     {statMeta.map(category => {
                       const content = section.categories?.[category.key];
                       return contentIsFilled(content) ? <section className="rt-stat-public-card" key={category.key}>
-                        <header><span className="eyebrow">STATISTICS / {category.index}</span><h3>{category.label}</h3></header>
+                        <header>
+                          <div className="rt-stat-public-topline">
+                            <span className="eyebrow">METRIC / {category.index}</span>
+                            <span className="rt-stat-public-marker">{category.index}</span>
+                          </div>
+                          <h3>{category.label}</h3>
+                        </header>
                         <PublicContentBlock content={content} threadTitle={thread.title} />
                       </section> : null;
                     })}
@@ -206,10 +212,20 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
                   <PublicContentBlock content={section} title="General notes" threadTitle={thread.title} />
                   <div className="rt-evidence-public-list">
                     {(section.entries || []).map((entry, entryIndex) => <article className="rt-evidence-public-card" key={entry.id || entryIndex}>
-                      <header><span className="eyebrow">{meta.key === 'resistance' ? 'RESISTANCE' : 'ABILITY'} / {String(entryIndex + 1).padStart(2, '0')}</span><h3>{entry.name || (meta.key === 'resistance' ? 'Resistance' : 'Ability')}</h3></header>
+                      <header className="rt-evidence-public-heading">
+                        <span className="rt-evidence-public-index">{String(entryIndex + 1).padStart(2, '0')}</span>
+                        <div className="rt-evidence-public-title">
+                          <span className="eyebrow">{meta.key === 'resistance' ? 'RESISTANCE' : 'ABILITY'} ENTRY</span>
+                          <h3>{entry.name || (meta.key === 'resistance' ? 'Resistance' : 'Ability')}</h3>
+                        </div>
+                        <span className="rt-evidence-feat-count">{(entry.feats || []).length} {(entry.feats || []).length === 1 ? 'feat' : 'feats'}</span>
+                      </header>
                       <div className="rt-public-feat-list">
                         {(entry.feats || []).map((feat, featIndex) => <article className="rt-public-feat-card" key={feat.id || featIndex}>
-                          <div className="rt-public-feat-heading"><span className="eyebrow">FEAT / {String(featIndex + 1).padStart(2, '0')}</span></div>
+                          <div className="rt-public-feat-heading">
+                            <span className="rt-public-feat-index">FEAT / {String(featIndex + 1).padStart(2, '0')}</span>
+                            <span className="rt-public-feat-label">SUPPORTING EVIDENCE</span>
+                          </div>
                           <PublicContentBlock content={feat} threadTitle={thread.title} />
                         </article>)}
                       </div>

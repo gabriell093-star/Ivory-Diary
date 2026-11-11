@@ -4,8 +4,16 @@ import ImageCropper from './ImageCropper';
 import { ADMIN_URL, PUBLIC_SUPABASE_KEY, adminRequest } from './lib';
 
 type MediaItem = { path: string; url: string };
-type ThreadSection = { description: string; links?: string[]; images: MediaItem[] };
-type SectionKey = 'introduction' | 'terminology' | 'cosmology' | 'personality' | 'statistic' | 'hax_ability' | 'resistance';
+type ThreadContent = { description: string; links: string[]; images: MediaItem[] };
+type StatKey = 'attack_potency' | 'durability' | 'speed' | 'stamina';
+type EvidenceFeat = ThreadContent & { id: string };
+type EvidenceEntry = { id: string; name: string; feats: EvidenceFeat[] };
+type ThreadSection = ThreadContent & {
+  categories?: Record<StatKey, ThreadContent>;
+  entries?: EvidenceEntry[];
+};
+type SectionKey = 'introduction' | 'terminology' | 'cosmology' | 'personality' | 'in_char' | 'statistic' | 'resistance' | 'hax_ability';
+type EvidenceSectionKey = 'resistance' | 'hax_ability';
 type ThreadSections = Record<SectionKey, ThreadSection>;
 type ThreadRecord = {
   id: string;
@@ -19,25 +27,45 @@ type ThreadRecord = {
   updated_at?: string;
 };
 type Draft = Omit<ThreadRecord, 'id' | 'created_at' | 'updated_at'> & { id?: string };
+type UploadTarget =
+  | { kind: 'section'; key: SectionKey }
+  | { kind: 'statistic'; category: StatKey }
+  | { kind: 'feat'; section: EvidenceSectionKey; entryId: string; featId: string };
+
+const statMeta: { key: StatKey; label: string }[] = [
+  { key: 'attack_potency', label: 'Attack Potency' },
+  { key: 'durability', label: 'Durability' },
+  { key: 'speed', label: 'Speed' },
+  { key: 'stamina', label: 'Stamina' },
+];
 
 const sectionMeta: { key: SectionKey; label: string; hint: string; imageLimit: number; maxWords: number }[] = [
   { key: 'introduction', label: 'Introduction', hint: 'Pengenalan karakter dan konteks. Maksimal 2.000 kata.', imageLimit: 1, maxWords: 2000 },
   { key: 'terminology', label: 'Terminology', hint: 'Uraian istilah, konsep, atau penamaan khusus. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
   { key: 'cosmology', label: 'Cosmology', hint: 'Penjelasan struktur dunia, alam, dimensi, atau kosmologi. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
   { key: 'personality', label: 'Personality', hint: 'Uraian karakterisasi dan kepribadian. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
-  { key: 'statistic', label: 'Statistic', hint: 'Statistik dan feat yang mendukung penilaian karakter. Maksimal 15.000 kata.', imageLimit: 10, maxWords: 15000 },
-  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Kemampuan khusus, mekanisme, dan penerapannya. Maksimal 15.000 kata.', imageLimit: 10, maxWords: 15000 },
-  { key: 'resistance', label: 'Resistance', hint: 'Jenis resistansi dan bukti pendukungnya. Maksimal 15.000 kata.', imageLimit: 10, maxWords: 15000 },
+  { key: 'in_char', label: 'In Char', hint: 'Penjelasan tindakan, pernyataan, atau konteks karakter dalam karakterisasi aslinya. Maksimal 15.000 kata.', imageLimit: 10, maxWords: 15000 },
+  { key: 'statistic', label: 'Statistics', hint: 'Statistik dipisahkan menjadi Attack Potency, Durability, Speed, dan Stamina. Maksimal 15.000 kata untuk seluruh bagian.', imageLimit: 10, maxWords: 15000 },
+  { key: 'resistance', label: 'Resistances', hint: 'Tambahkan setiap jenis resistansi sebagai entri terpisah, lalu lampirkan feat pendukungnya.', imageLimit: 10, maxWords: 15000 },
+  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Tambahkan setiap kemampuan sebagai entri terpisah, lalu lampirkan feat pendukungnya.', imageLimit: 10, maxWords: 15000 },
 ];
 
+const blankContent = (): ThreadContent => ({ description: '', links: [], images: [] });
+const blankCategories = (): Record<StatKey, ThreadContent> => ({
+  attack_potency: blankContent(),
+  durability: blankContent(),
+  speed: blankContent(),
+  stamina: blankContent(),
+});
 const blankSections = (): ThreadSections => ({
-  introduction: { description: '', images: [] },
-  terminology: { description: '', links: [], images: [] },
-  cosmology: { description: '', links: [], images: [] },
-  personality: { description: '', links: [], images: [] },
-  statistic: { description: '', links: [], images: [] },
-  hax_ability: { description: '', links: [], images: [] },
-  resistance: { description: '', links: [], images: [] },
+  introduction: blankContent(),
+  terminology: blankContent(),
+  cosmology: blankContent(),
+  personality: blankContent(),
+  in_char: blankContent(),
+  statistic: { ...blankContent(), categories: blankCategories() },
+  resistance: { ...blankContent(), entries: [] },
+  hax_ability: { ...blankContent(), entries: [] },
 });
 
 const newDraft = (): Draft => ({
@@ -63,14 +91,27 @@ const isValidHttpReference = (value: string) => {
     return false;
   }
 };
-const totalWords = (sections: ThreadSections) => sectionMeta.reduce((sum, item) => sum + words(sections[item.key]?.description || ''), 0);
-const countThreadImages = (sections: ThreadSections) => sectionMeta.reduce((sum, item) => sum + (sections[item.key]?.images?.length || 0), 0);
 const referenceTextWords = (references: string[]) => references.reduce((sum, value) => {
   const reference = value.trim();
   if (!reference || isValidHttpReference(reference)) return sum;
   return sum + words(reference);
 }, 0);
 const makeSlug = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 160);
+const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : 'rt-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+const normalizeContent = (value: unknown): ThreadContent => {
+  if (!value || typeof value !== 'object') return blankContent();
+  const data = value as Record<string, any>;
+  return {
+    description: typeof data.description === 'string' ? data.description : '',
+    links: Array.isArray(data.links)
+      ? data.links.filter((link: unknown) => typeof link === 'string')
+      : (typeof data.link === 'string' && data.link.trim() ? [data.link] : []),
+    images: Array.isArray(data.images)
+      ? data.images.filter((image: any) => image && typeof image.path === 'string' && typeof image.url === 'string')
+      : [],
+  };
+};
 
 const normalizeSections = (value: unknown): ThreadSections => {
   const fallback = blankSections();
@@ -79,35 +120,82 @@ const normalizeSections = (value: unknown): ThreadSections => {
   for (const meta of sectionMeta) {
     const section = data[meta.key];
     if (!section || typeof section !== 'object') continue;
-    fallback[meta.key] = {
-      description: typeof section.description === 'string' ? section.description : '',
-      ...(meta.key === 'introduction' ? {} : { links: Array.isArray(section.links) ? section.links.filter((link: unknown) => typeof link === 'string') : (typeof section.link === 'string' && section.link.trim() ? [section.link] : []) }),
-      images: Array.isArray(section.images) ? section.images.filter((image: any) => image && typeof image.path === 'string' && typeof image.url === 'string').slice(0, meta.imageLimit) : [],
-    };
+    const content = normalizeContent(section);
+    fallback[meta.key] = { ...content };
+    if (meta.key === 'statistic') {
+      const categories = section.categories && typeof section.categories === 'object' ? section.categories : {};
+      fallback.statistic.categories = {
+        attack_potency: normalizeContent(categories.attack_potency),
+        durability: normalizeContent(categories.durability),
+        speed: normalizeContent(categories.speed),
+        stamina: normalizeContent(categories.stamina),
+      };
+    }
+    if (meta.key === 'resistance' || meta.key === 'hax_ability') {
+      fallback[meta.key].entries = Array.isArray(section.entries)
+        ? section.entries.filter((entry: any) => entry && typeof entry === 'object').map((entry: any) => ({
+          id: typeof entry.id === 'string' && entry.id ? entry.id : makeId(),
+          name: typeof entry.name === 'string' ? entry.name : '',
+          feats: Array.isArray(entry.feats) ? entry.feats.filter((feat: any) => feat && typeof feat === 'object').map((feat: any) => ({
+            ...normalizeContent(feat),
+            id: typeof feat.id === 'string' && feat.id ? feat.id : makeId(),
+          })) : [],
+        }))
+        : [];
+    }
   }
   return fallback;
+};
+
+const contentIsFilled = (content?: ThreadContent | null) => Boolean(
+  content && (content.description.trim() || content.links.some(link => link.trim()) || content.images.length),
+);
+const sectionContents = (section: ThreadSection, key: SectionKey): ThreadContent[] => {
+  const contents: ThreadContent[] = [section];
+  if (key === 'statistic') {
+    for (const meta of statMeta) contents.push(section.categories?.[meta.key] || blankContent());
+  }
+  if (key === 'resistance' || key === 'hax_ability') {
+    for (const entry of section.entries || []) contents.push(...entry.feats);
+  }
+  return contents;
+};
+const sectionWordCount = (section: ThreadSection, key: SectionKey) => sectionContents(section, key).reduce((sum, content) => sum + words(content.description), 0);
+const totalWords = (sections: ThreadSections) => sectionMeta.reduce((sum, meta) => sum + sectionWordCount(sections[meta.key], meta.key), 0);
+const countThreadImages = (sections: ThreadSections) => sectionMeta.reduce((sum, meta) => (
+  sum + sectionContents(sections[meta.key], meta.key).reduce((count, content) => count + content.images.length, 0)
+), 0);
+const sectionIsFilled = (section: ThreadSection, key: SectionKey) => {
+  if (contentIsFilled(section)) return true;
+  if (key === 'statistic' && statMeta.some(meta => contentIsFilled(section.categories?.[meta.key]))) return true;
+  if ((key === 'resistance' || key === 'hax_ability') && (section.entries || []).some(entry => entry.name.trim() || entry.feats.some(contentIsFilled))) return true;
+  return false;
 };
 
 export default function RespectThreadManager({ token, onNavigate }: { token: string; onNavigate: (path: string) => void }) {
   const [items, setItems] = useState<ThreadRecord[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [activeSection, setActiveSection] = useState<SectionKey>('introduction');
+  const [activeStatCategory, setActiveStatCategory] = useState<StatKey>('attack_potency');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropTarget, setCropTarget] = useState<UploadTarget | null>(null);
   const [cropBusy, setCropBusy] = useState(false);
   const newUploadPathsRef = useRef<string[]>([]);
 
   const wordCount = useMemo(() => totalWords(draft?.sections || blankSections()), [draft?.sections]);
   const filledSections = useMemo(
-    () => sectionMeta.filter(meta => draft?.sections[meta.key].description.trim()).length,
+    () => sectionMeta.filter(meta => draft && sectionIsFilled(draft.sections[meta.key], meta.key)).length,
     [draft?.sections],
   );
   const progressPercent = Math.round((filledSections / sectionMeta.length) * 100);
   const activeMeta = sectionMeta.find(section => section.key === activeSection)!;
   const activeContent = draft?.sections[activeSection] || blankSections()[activeSection];
+  const activeSectionWords = draft ? sectionWordCount(activeContent, activeSection) : 0;
+  const totalImages = draft ? countThreadImages(draft.sections) : 0;
 
   const cleanupUploadedMedia = async () => {
     const paths = [...new Set(newUploadPathsRef.current)];
@@ -124,6 +212,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     if (saving || cropBusy) return;
     await cleanupUploadedMedia();
     setCropFile(null);
+    setCropTarget(null);
     setDraft(null);
     setNotice('Perubahan yang belum disimpan dibatalkan.');
   };
@@ -146,6 +235,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
   const startNew = () => {
     setDraft(newDraft());
     setActiveSection('introduction');
+    setActiveStatCategory('attack_potency');
     setSlugTouched(false);
     setNotice('');
   };
@@ -161,6 +251,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       is_published: item.is_published,
     });
     setActiveSection('introduction');
+    setActiveStatCategory('attack_potency');
     setSlugTouched(true);
     setNotice('');
   };
@@ -175,7 +266,73 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     }) : current);
   };
 
-  const chooseImage = (event: ChangeEvent<HTMLInputElement>) => {
+  const getTargetContent = (currentDraft: Draft | null, target: UploadTarget): ThreadContent => {
+    if (!currentDraft) return blankContent();
+    if (target.kind === 'section') return currentDraft.sections[target.key];
+    if (target.kind === 'statistic') return currentDraft.sections.statistic.categories?.[target.category] || blankContent();
+    const entry = (currentDraft.sections[target.section].entries || []).find(item => item.id === target.entryId);
+    return entry?.feats.find(feat => feat.id === target.featId) || blankContent();
+  };
+
+  const updateTargetContent = (target: UploadTarget, patch: Partial<ThreadContent>) => {
+    setDraft(current => {
+      if (!current) return current;
+      const sections = { ...current.sections };
+      if (target.kind === 'section') {
+        sections[target.key] = { ...sections[target.key], ...patch };
+      } else if (target.kind === 'statistic') {
+        const statistic = sections.statistic;
+        sections.statistic = {
+          ...statistic,
+          categories: {
+            ...blankCategories(),
+            ...(statistic.categories || {}),
+            [target.category]: { ...(statistic.categories?.[target.category] || blankContent()), ...patch },
+          },
+        };
+      } else {
+        const section = sections[target.section];
+        sections[target.section] = {
+          ...section,
+          entries: (section.entries || []).map(entry => entry.id === target.entryId ? ({
+            ...entry,
+            feats: entry.feats.map(feat => feat.id === target.featId ? { ...feat, ...patch } : feat),
+          }) : entry),
+        };
+      }
+      return { ...current, sections };
+    });
+  };
+
+  const addEvidenceEntry = (key: EvidenceSectionKey) => {
+    const section = draft?.sections[key];
+    updateSection(key, { entries: [...(section?.entries || []), { id: makeId(), name: '', feats: [] }] });
+  };
+  const updateEvidenceEntry = (key: EvidenceSectionKey, entryId: string, patch: Partial<EvidenceEntry>) => {
+    const entries = draft?.sections[key].entries || [];
+    updateSection(key, { entries: entries.map(entry => entry.id === entryId ? { ...entry, ...patch } : entry) });
+  };
+  const removeEvidenceEntry = (key: EvidenceSectionKey, entryId: string) => {
+    const entries = draft?.sections[key].entries || [];
+    updateSection(key, { entries: entries.filter(entry => entry.id !== entryId) });
+  };
+  const addFeat = (key: EvidenceSectionKey, entryId: string) => {
+    const entries = draft?.sections[key].entries || [];
+    updateSection(key, {
+      entries: entries.map(entry => entry.id === entryId ? ({
+        ...entry,
+        feats: [...entry.feats, { ...blankContent(), id: makeId() }],
+      }) : entry),
+    });
+  };
+  const removeFeat = (key: EvidenceSectionKey, entryId: string, featId: string) => {
+    const entries = draft?.sections[key].entries || [];
+    updateSection(key, {
+      entries: entries.map(entry => entry.id === entryId ? ({ ...entry, feats: entry.feats.filter(feat => feat.id !== featId) }) : entry),
+    });
+  };
+
+  const chooseImage = (event: ChangeEvent<HTMLInputElement>, target: UploadTarget, imageLimit: number) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !draft) return;
@@ -183,12 +340,13 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       setNotice('Hanya foto JPG, PNG, atau WebP yang dapat dipilih. Video tidak didukung.');
       return;
     }
-    if (!activeMeta.imageLimit) {
+    if (imageLimit <= 0) {
       setNotice('Bagian ini tidak menerima foto.');
       return;
     }
-    if (activeContent.images.length >= activeMeta.imageLimit) {
-      setNotice('Kuota foto untuk bagian ' + activeMeta.label + ' sudah penuh.');
+    const content = getTargetContent(draft, target);
+    if (content.images.length >= imageLimit) {
+      setNotice('Batas foto untuk area ini sudah tercapai.');
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
@@ -200,14 +358,18 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       return;
     }
     setNotice('');
+    setCropTarget(target);
     setCropFile(file);
   };
 
   const uploadCroppedImage = async (file: File) => {
-    if (!draft) throw new Error('Draft Respect Thread tidak ditemukan.');
+    if (!draft || !cropTarget) throw new Error('Tujuan foto Respect Thread tidak ditemukan.');
     if (file.type !== 'image/jpeg') throw new Error('Foto harus berupa hasil crop JPEG.');
     if (file.size > MAX_IMAGE_BYTES) throw new Error('Setiap foto Respect Thread maksimal 3 MB.');
-    if (activeContent.images.length >= activeMeta.imageLimit) throw new Error('Batas foto bagian ini sudah tercapai.');
+    const currentContent = getTargetContent(draft, cropTarget);
+    const imageLimit = cropTarget.kind === 'section' && cropTarget.key === 'introduction' ? 1
+      : cropTarget.kind === 'section' && sectionMeta.find(meta => meta.key === cropTarget.key)?.imageLimit === 0 ? 0 : 10;
+    if (imageLimit <= 0 || currentContent.images.length >= imageLimit) throw new Error('Batas foto pada area ini sudah tercapai.');
     if (countThreadImages(draft.sections) >= MAX_THREAD_IMAGES) throw new Error('Satu Respect Thread maksimal 10 foto secara keseluruhan.');
     setCropBusy(true);
     try {
@@ -222,17 +384,46 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       if (!response.ok) throw new Error(result.error || 'Foto gagal diunggah.');
       if (typeof result.path !== 'string' || typeof result.url !== 'string') throw new Error('Server tidak mengembalikan alamat foto yang valid.');
       newUploadPathsRef.current.push(result.path);
-      updateSection(activeSection, { images: [...activeContent.images, { path: result.path, url: result.url }] });
+      updateTargetContent(cropTarget, { images: [...currentContent.images, { path: result.path, url: result.url }] });
       setCropFile(null);
-      setNotice('Foto berhasil ditambahkan ke ' + activeMeta.label + '.');
+      setCropTarget(null);
+      setNotice('Foto berhasil ditambahkan.');
     } finally {
       setCropBusy(false);
     }
   };
 
-  const removeImage = (index: number) => {
-    if (!activeContent) return;
-    updateSection(activeSection, { images: activeContent.images.filter((_, i) => i !== index) });
+  const removeImage = (target: UploadTarget, index: number) => {
+    if (!draft) return;
+    const content = getTargetContent(draft, target);
+    updateTargetContent(target, { images: content.images.filter((_, imageIndex) => imageIndex !== index) });
+  };
+
+  const validateContent = (content: ThreadContent, label: string, allowLinks = true): string | null => {
+    const description = content.description || '';
+    const links = (content.links || []).map(link => link.trim()).filter(Boolean);
+    const images = content.images || [];
+    if (description.length > 500000) return 'Deskripsi ' + label + ' terlalu panjang.';
+    if (containsRespectLink(description)) return 'Deskripsi ' + label + ' tidak boleh mengandung URL atau tautan. Pindahkan ke bagian Link & teks referensi.';
+    if (!allowLinks && links.length) return 'Introduction tidak menerima link; pindahkan referensi ke bagian lain.';
+    let plainTextWords = 0;
+    for (const reference of links) {
+      if (reference.length > 10000) return 'Salah satu referensi ' + label + ' terlalu panjang.';
+      if (isValidHttpReference(reference)) continue;
+      if (/^https?:\/\//i.test(reference) || containsRespectLink(reference)) {
+        return 'Referensi ' + label + ' harus berupa satu URL HTTP/HTTPS yang valid per item, atau teks biasa tanpa URL.';
+      }
+      plainTextWords += words(reference);
+    }
+    if (plainTextWords > 100) return 'Teks biasa pada referensi ' + label + ' maksimal 100 kata total.';
+    if (images.length > MAX_THREAD_IMAGES) return 'Jumlah foto pada ' + label + ' melebihi batas.';
+    if (!description.trim() && (links.length > 0 || images.length > 0)) return 'Isi deskripsi ' + label + ' sebelum menyimpan link atau foto.';
+    for (const image of images) {
+      if (!image || typeof image.path !== 'string' || !image.path.startsWith('respect-threads/') || !isValidHttpReference(image.url)) {
+        return 'Alamat foto pada ' + label + ' tidak valid.';
+      }
+    }
+    return null;
   };
 
   const validateDraft = (): string | null => {
@@ -240,26 +431,33 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     if (!draft.title.trim()) return 'Judul Respect Thread wajib diisi.';
     if (!draft.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(draft.slug)) return 'Slug harus menggunakan huruf kecil, angka, dan tanda hubung.';
     if (items.some(item => item.slug === draft.slug && item.id !== draft.id)) return 'Slug tersebut sudah digunakan. Silakan ubah alamat halaman.';
+    let hasAnyDescription = false;
     for (const meta of sectionMeta) {
       const section = draft.sections[meta.key];
-      const hasDescription = section.description.trim().length > 0;
-      const links = (section.links || []).map(link => link.trim()).filter(Boolean);
-      if (containsRespectLink(section.description)) return 'Deskripsi bagian ' + meta.label + ' tidak boleh mengandung URL atau tautan. Pindahkan ke bagian Link & teks referensi.';
-      if (words(section.description) > meta.maxWords) return 'Bagian ' + meta.label + ' maksimal ' + meta.maxWords.toLocaleString('id-ID') + ' kata.';
-      if (!hasDescription && (links.length > 0 || section.images.length > 0)) return 'Bagian ' + meta.label + ' memiliki referensi atau foto. Isi deskripsinya sebelum menyimpan.';
-      if (section.images.length > meta.imageLimit) return 'Jumlah foto bagian ' + meta.label + ' melebihi batas.';
-      let plainTextWords = 0;
-      for (const reference of links) {
-        if (isValidHttpReference(reference)) continue;
-        if (/^https?:\/\//i.test(reference) || containsRespectLink(reference)) {
-          return 'Referensi bagian ' + meta.label + ' harus berupa satu URL HTTP/HTTPS yang valid per item, atau teks biasa tanpa URL.';
-        }
-        plainTextWords += words(reference);
+      const contents = sectionContents(section, meta.key);
+      const sectionWords = sectionWordCount(section, meta.key);
+      if (sectionWords > meta.maxWords) return 'Bagian ' + meta.label + ' maksimal ' + meta.maxWords.toLocaleString('id-ID') + ' kata.';
+      if (meta.key === 'introduction' && section.images.length > 1) return 'Introduction hanya menerima satu foto.';
+      for (const content of contents) {
+        const issue = validateContent(content, meta.label, meta.key !== 'introduction');
+        if (issue) return issue;
+        if (content.description.trim()) hasAnyDescription = true;
       }
-      if (plainTextWords > 100) return 'Teks biasa pada referensi bagian ' + meta.label + ' maksimal 100 kata total.';
+      if (meta.key === 'resistance' || meta.key === 'hax_ability') {
+        for (let entryIndex = 0; entryIndex < (section.entries || []).length; entryIndex++) {
+          const entry = section.entries![entryIndex];
+          const entryLabel = (meta.key === 'resistance' ? 'Resistance ' : 'Ability ') + (entryIndex + 1);
+          if (!entry.name.trim()) return 'Nama ' + entryLabel + ' wajib diisi.';
+          if (entry.name.length > 160) return 'Nama ' + entryLabel + ' maksimal 160 karakter.';
+          if (!entry.feats.length) return entryLabel + ' harus memiliki minimal satu feat pendukung.';
+          for (let featIndex = 0; featIndex < entry.feats.length; featIndex++) {
+            if (!entry.feats[featIndex].description.trim()) return entryLabel + ', Feat ' + (featIndex + 1) + ': deskripsi feat wajib diisi.';
+          }
+        }
+      }
     }
     if (countThreadImages(draft.sections) > MAX_THREAD_IMAGES) return 'Satu Respect Thread maksimal 10 foto secara keseluruhan.';
-    if (!sectionMeta.some(meta => draft.sections[meta.key].description.trim())) return 'Isi setidaknya satu deskripsi pada salah satu bagian.';
+    if (!hasAnyDescription) return 'Isi setidaknya satu deskripsi pada salah satu bagian.';
     return null;
   };
 
@@ -275,10 +473,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
         title: draft.title.trim(),
         character_name: draft.character_name.trim(),
         universe: draft.universe.trim(),
-        sections: Object.fromEntries(sectionMeta.map(meta => {
-          const section = draft.sections[meta.key];
-          return [meta.key, { ...section, ...(meta.key === 'introduction' ? {} : { links: (section.links || []).map(link => link.trim()).filter(Boolean) }) }];
-        })) as ThreadSections,
+        sections: draft.sections,
         is_published: draft.is_published,
       };
       if (draft.id) {
@@ -311,10 +506,44 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     }
   };
 
+  const renderContentEditor = (content: ThreadContent, target: UploadTarget, label: string, allowLinks: boolean, imageLimit: number) => {
+    const links = content.links || [];
+    const images = content.images || [];
+    const plainWords = referenceTextWords(links);
+    const globalImages = draft ? countThreadImages(draft.sections) : 0;
+    return (
+      <div className="rt-nested-content">
+        <label className="field rt-description-field">
+          <span>Deskripsi {label}</span>
+          <textarea rows={7} maxLength={500000} value={content.description || ''} placeholder={'Tulis penjelasan untuk ' + label + ' di sini…'} aria-invalid={containsRespectLink(content.description || '')} onChange={event => updateTargetContent(target, { description: event.target.value })} />
+          {containsRespectLink(content.description || '') && <small className="rt-validation-error" role="alert">Deskripsi tidak boleh berisi URL/tautan. Pindahkan URL ke bagian Link & teks referensi.</small>}
+        </label>
+        {allowLinks && <div className="rt-links-field">
+          <div className="rt-links-field-heading"><span><Link2 size={13} /> Link & teks referensi</span><small>{links.filter(link => link.trim()).length} item · {plainWords} / 100 kata teks</small></div>
+          {links.map((link, index) => <div className="rt-link-item" key={index}>
+            <textarea rows={2} maxLength={10000} value={link} placeholder="https://… atau teks biasa" aria-label={'Referensi ' + (index + 1) + ' ' + label} onChange={event => updateTargetContent(target, { links: links.map((item, itemIndex) => itemIndex === index ? event.target.value : item) })} />
+            <button type="button" className="rt-link-remove" aria-label={'Hapus link ' + (index + 1)} onClick={() => updateTargetContent(target, { links: links.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={14} /></button>
+          </div>)}
+          <button type="button" className="rt-add-link" onClick={() => updateTargetContent(target, { links: [...links, ''] })}><Plus size={14} /> Tambah link</button>
+          <small>Jumlah URL tidak dibatasi. Teks biasa maksimal 100 kata untuk area ini. Link dapat ditambahkan sebelum deskripsi; kelengkapan diperiksa saat menyimpan.</small>
+        </div>}
+        {imageLimit > 0 && <div className="rt-media-field">
+          <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{images.length} foto di area ini · {globalImages} / 10 total · maks. 3 MB/foto</small></div><label className={images.length < imageLimit && globalImages < MAX_THREAD_IMAGES && !cropBusy ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={images.length >= imageLimit || globalImages >= MAX_THREAD_IMAGES || cropBusy} onChange={event => chooseImage(event, target, imageLimit)} /></label></div>
+          <p className="rt-media-hint">Video tidak didukung. Semua foto wajib melewati cropper sebelum diunggah. Foto dapat ditambahkan lebih dulu; deskripsi diperiksa saat konfirmasi simpan.</p>
+          {images.length > 0 && <div className="rt-upload-preview">{images.map((image, index) => <figure key={image.path}><img src={image.url} alt={'Foto ' + (index + 1) + ' ' + label} /><button type="button" aria-label={'Hapus foto ' + (index + 1)} onClick={() => removeImage(target, index)}><Trash2 size={13} /></button><figcaption>FOTO {String(index + 1).padStart(2, '0')}</figcaption></figure>)}</div>}
+        </div>}
+      </div>
+    );
+  };
+
+  const isEvidenceSection = activeSection === 'resistance' || activeSection === 'hax_ability';
+  const evidenceKey = activeSection === 'resistance' ? 'resistance' : 'hax_ability';
+  const evidenceEntries = isEvidenceSection ? (activeContent.entries || []) : [];
+
   return (
     <section className="rt-manager">
       <header className="rt-manager-heading">
-        <div><span className="eyebrow">OWNER WORKSPACE / CONTENT ARCHIVE</span><h2>Respect <em>Thread.</em></h2><p>Susun tujuh bagian, lampirkan sumber, lalu publikasikan ke halaman publik.</p></div>
+        <div><span className="eyebrow">OWNER WORKSPACE / CONTENT ARCHIVE</span><h2>Respect <em>Thread.</em></h2><p>Susun delapan bagian, kelola bukti per feat, lalu publikasikan ke arsip Respect Thread.</p></div>
         {!draft && <button className="button primary" type="button" onClick={startNew}><Plus size={16} /> Buat Respect Thread</button>}
       </header>
 
@@ -322,7 +551,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
 
       {draft ? (
         <div className="rt-editor">
-          <div className="rt-editor-toolbar"><div><span className="eyebrow">THREAD EDITOR / {draft.id ? 'EDIT' : 'NEW ENTRY'}</span><h3>{draft.id ? 'Perbarui thread' : 'Thread baru'}</h3><p>Susun materi per bagian, periksa batas kata, lalu simpan sebagai draft atau publikasikan.</p></div><button type="button" className="rt-editor-close" onClick={() => void abandonDraft()} disabled={saving || cropBusy}><X size={16} /> Tutup editor</button></div>
+          <div className="rt-editor-toolbar"><div><span className="eyebrow">THREAD EDITOR / {draft.id ? 'EDIT' : 'NEW ENTRY'}</span><h3>{draft.id ? 'Perbarui thread' : 'Thread baru'}</h3><p>Susun materi secara bertahap. Data pada kategori dan feat lain tetap tersimpan ketika Anda berpindah bagian.</p></div><button type="button" className="rt-editor-close" onClick={() => void abandonDraft()} disabled={saving || cropBusy}><X size={16} /> Tutup editor</button></div>
 
           <div className="rt-editor-meta">
             <label className="field"><span>Judul Respect Thread *</span><input value={draft.title} maxLength={180} placeholder="Contoh: Nama Karakter — Respect Thread" onChange={event => {
@@ -334,59 +563,81 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
             <label className="field"><span>Alamat halaman (slug) *</span><input value={draft.slug} maxLength={180} placeholder="nama-karakter-respect-thread" onChange={event => { setSlugTouched(true); setDraft(current => current ? ({ ...current, slug: makeSlug(event.target.value) }) : current); }} /><small>Halaman publik: /respect-thread/{draft.slug || 'slug-thread'}</small></label>
           </div>
 
-          <div className="rt-editor-section-intro"><div><span className="eyebrow">CONTENT STRUCTURE / 07 SECTIONS</span><p>Pilih bagian untuk mulai menulis. Bagian yang sudah memiliki deskripsi akan ditandai.</p></div><div className="rt-editor-progress" aria-label={filledSections + ' dari 7 bagian sudah diisi'}><div><span>{filledSections} / 07 BAGIAN TERISI</span><b>{progressPercent}%</b></div><div className="rt-progress-track"><span style={{ width: progressPercent + '%' }} /></div></div></div>
+          <div className="rt-editor-section-intro"><div><span className="eyebrow">CONTENT STRUCTURE / 08 SECTIONS</span><p>Pilih bagian untuk mulai menulis. Bagian yang sudah berisi materi atau bukti akan ditandai.</p></div><div className="rt-editor-progress" aria-label={filledSections + ' dari ' + sectionMeta.length + ' bagian sudah diisi'}><div><span>{filledSections} / {String(sectionMeta.length).padStart(2, '0')} BAGIAN TERISI</span><b>{progressPercent}%</b></div><div className="rt-progress-track"><span style={{ width: progressPercent + '%' }} /></div></div></div>
           <div className="rt-editor-layout">
             <nav className="rt-editor-nav" aria-label="Pilih bagian Respect Thread">
               {sectionMeta.map((meta, index) => {
-                const filled = Boolean(draft.sections[meta.key].description.trim());
+                const filled = sectionIsFilled(draft.sections[meta.key], meta.key);
                 return <button type="button" key={meta.key} className={activeSection === meta.key ? 'active' : ''} onClick={() => { setActiveSection(meta.key); setNotice(''); }} aria-current={activeSection === meta.key ? 'step' : undefined}><span>{String(index + 1).padStart(2, '0')}</span><b>{meta.label}</b><i>{filled ? <Check size={13} /> : <small>Belum diisi</small>}</i></button>;
               })}
             </nav>
 
             <section className="rt-editor-pane">
-              <div className="rt-editor-pane-heading"><div><span className="eyebrow">SECTION {String(sectionMeta.findIndex(x => x.key === activeSection) + 1).padStart(2, '0')}</span><h3>{activeMeta.label}</h3><p>{activeMeta.hint}</p></div><span className={'rt-section-word-count' + (words(activeContent.description) > activeMeta.maxWords ? ' over-limit' : '')}>{words(activeContent.description).toLocaleString('id-ID')} / {activeMeta.maxWords.toLocaleString('id-ID')} kata</span></div>
-              <label className="field rt-description-field"><span>Deskripsi bagian</span><textarea rows={10} maxLength={500000} value={activeContent.description} placeholder={'Tulis penjelasan untuk ' + activeMeta.label + ' di sini…'} aria-invalid={containsRespectLink(activeContent.description)} onChange={event => updateSection(activeSection, { description: event.target.value })} /><small>Batas berlaku per bagian: Introduction maksimal 2.000 kata, sedangkan setiap bagian lainnya maksimal 15.000 kata.</small>{containsRespectLink(activeContent.description) && <small className="rt-validation-error" role="alert">Deskripsi tidak boleh berisi URL/tautan. Pindahkan URL ke bagian Link & teks referensi.</small>}</label>
+              <div className="rt-editor-pane-heading"><div><span className="eyebrow">SECTION {String(sectionMeta.findIndex(x => x.key === activeSection) + 1).padStart(2, '0')}</span><h3>{activeMeta.label}</h3><p>{activeMeta.hint}</p></div><span className={'rt-section-word-count' + (activeSectionWords > activeMeta.maxWords ? ' over-limit' : '')}>{activeSectionWords.toLocaleString('id-ID')} / {activeMeta.maxWords.toLocaleString('id-ID')} kata</span></div>
 
-              {activeSection !== 'introduction' && <div className="rt-links-field">
-                <div className="rt-links-field-heading"><span><Link2 size={13} /> Link & teks referensi</span><small>{(activeContent.links || []).filter(link => link.trim()).length} item · {referenceTextWords(activeContent.links || [])} / 100 kata teks</small></div>
-                {(activeContent.links || []).map((link, index) => <div className="rt-link-item" key={index}>
-                  <textarea rows={2} maxLength={10000} value={link} placeholder="https://… atau teks biasa" aria-label={'Referensi ' + (index + 1)} onChange={event => updateSection(activeSection, { links: (activeContent.links || []).map((item, itemIndex) => itemIndex === index ? event.target.value : item) })} />
-                  <button type="button" className="rt-link-remove" aria-label={'Hapus link ' + (index + 1)} onClick={() => updateSection(activeSection, { links: (activeContent.links || []).filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={14} /></button>
-                </div>)}
-                <button type="button" className="rt-add-link" onClick={() => updateSection(activeSection, { links: [...(activeContent.links || []), ''] })}><Plus size={14} /> Tambah link</button>
-                <small>Jumlah URL tidak dibatasi. Setiap bagian boleh memuat teks biasa hingga 100 kata total. Tambahkan referensi sebelum deskripsi bila perlu; deskripsi bagian wajib diisi saat konfirmasi simpan.</small>
-              </div>}
-
-              {activeMeta.imageLimit > 0 && <div className="rt-media-field">
-                <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{activeContent.images.length} / {activeMeta.imageLimit} foto bagian · {countThreadImages(draft.sections)} / 10 total · maks. 3 MB/foto</small></div><label className={activeContent.images.length < activeMeta.imageLimit && countThreadImages(draft.sections) < MAX_THREAD_IMAGES && !cropBusy ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={activeContent.images.length >= activeMeta.imageLimit || countThreadImages(draft.sections) >= MAX_THREAD_IMAGES || cropBusy} onChange={chooseImage} /></label></div>
-                <p className="rt-media-hint">Video tidak didukung. Maksimal 10 foto untuk satu thread, dengan ukuran maksimal 3 MB per foto. Foto boleh ditambahkan lebih dulu; deskripsi wajib tersedia saat menyimpan.</p>
-                {activeContent.images.length > 0 && <div className="rt-upload-preview">{activeContent.images.map((image, index) => <figure key={image.path}><img src={image.url} alt={'Foto ' + (index + 1) + ' bagian ' + activeMeta.label} /><button type="button" aria-label="Hapus foto" onClick={() => removeImage(index)}><Trash2 size={13} /></button><figcaption>FOTO {String(index + 1).padStart(2, '0')}</figcaption></figure>)}</div>}
-              </div>}
-
-              {activeSection === 'introduction' && <div className="rt-intro-photo-note"><ImagePlus size={15} /><span>Introduction hanya menerima satu foto; batas keseluruhan tetap 10 foto per thread dan 3 MB per foto. Deskripsi boleh disimpan tanpa foto.</span></div>}
-              {activeMeta.imageLimit === 0 && activeSection !== 'introduction' && <div className="rt-intro-photo-note"><Link2 size={15} /><span>Bagian ini berisi deskripsi dan link referensi tanpa batas. Foto tidak tersedia di bagian ini.</span></div>}
+              {activeSection === 'statistic' ? <>
+                <details className="rt-legacy-panel" open={Boolean(activeContent.description.trim() || activeContent.links.length || activeContent.images.length)}>
+                  <summary>Catatan statistik umum (opsional / data lama)</summary>
+                  {renderContentEditor(activeContent, { kind: 'section', key: 'statistic' }, 'catatan statistik umum', true, 10)}
+                </details>
+                <div className="rt-stat-editor">
+                  <div className="rt-evidence-heading"><div><span className="eyebrow">STATISTICS / 04 CATEGORIES</span><h4>Statistik karakter</h4><p>Pilih kategori yang sedang dikerjakan. Setiap kategori menyimpan deskripsi, referensi, dan foto secara terpisah.</p></div></div>
+                  <div className="rt-stat-tabs" role="tablist" aria-label="Kategori statistik">
+                    {statMeta.map((meta, index) => {
+                      const category = activeContent.categories?.[meta.key] || blankContent();
+                      return <button key={meta.key} type="button" role="tab" aria-selected={activeStatCategory === meta.key} className={activeStatCategory === meta.key ? 'active' : ''} onClick={() => setActiveStatCategory(meta.key)}><span>{String(index + 1).padStart(2, '0')}</span><b>{meta.label}</b><small>{contentIsFilled(category) ? 'Terisi' : 'Belum diisi'}</small></button>;
+                    })}
+                  </div>
+                  <div className="rt-stat-category-panel">
+                    <div className="rt-stat-category-heading"><span className="eyebrow">STATISTIC / {String(statMeta.findIndex(meta => meta.key === activeStatCategory) + 1).padStart(2, '0')}</span><h5>{statMeta.find(meta => meta.key === activeStatCategory)?.label}</h5></div>
+                    {renderContentEditor(activeContent.categories?.[activeStatCategory] || blankContent(), { kind: 'statistic', category: activeStatCategory }, statMeta.find(meta => meta.key === activeStatCategory)?.label || 'statistik', true, 10)}
+                  </div>
+                </div>
+              </> : isEvidenceSection ? <>
+                <details className="rt-legacy-panel" open={Boolean(activeContent.description.trim() || activeContent.links.length || activeContent.images.length)}>
+                  <summary>Catatan umum / kompatibilitas data lama (opsional)</summary>
+                  {renderContentEditor(activeContent, { kind: 'section', key: activeSection }, 'catatan umum', true, 10)}
+                </details>
+                <div className="rt-evidence-manager">
+                  <div className="rt-evidence-heading"><div><span className="eyebrow">{activeSection === 'resistance' ? 'RESISTANCE ARCHIVE' : 'ABILITY ARCHIVE'}</span><h4>{activeSection === 'resistance' ? 'Daftar Resistances' : 'Daftar Hax & Ability'}</h4><p>Setiap entri memiliki feat pendukung sendiri. Deskripsi, URL, dan foto dikelola per feat.</p></div><button type="button" className="rt-add-evidence" onClick={() => addEvidenceEntry(evidenceKey)}><Plus size={15} /> {activeSection === 'resistance' ? 'Tambah Resistance' : 'Tambah Ability'}</button></div>
+                  {evidenceEntries.length === 0 ? <div className="rt-evidence-empty"><BookOpen size={19} /><p>Belum ada entri. Tambahkan satu {activeSection === 'resistance' ? 'jenis resistance' : 'ability'}, kemudian tambahkan feat pendukungnya.</p></div> : <div className="rt-evidence-list">
+                    {evidenceEntries.map((entry, entryIndex) => <article className="rt-evidence-entry" key={entry.id}>
+                      <header className="rt-evidence-entry-heading"><div><span className="eyebrow">{activeSection === 'resistance' ? 'RESISTANCE' : 'ABILITY'} / {String(entryIndex + 1).padStart(2, '0')}</span><label className="field"><span>Nama {activeSection === 'resistance' ? 'Resistance' : 'Ability'} *</span><input value={entry.name} maxLength={160} placeholder={activeSection === 'resistance' ? 'Contoh: Fire Manipulation Resistance' : 'Contoh: Spatial Manipulation'} onChange={event => updateEvidenceEntry(evidenceKey, entry.id, { name: event.target.value })} /></label></div><button type="button" className="rt-evidence-remove" aria-label="Hapus entri" onClick={() => removeEvidenceEntry(evidenceKey, entry.id)}><Trash2 size={14} /> Hapus entri</button></header>
+                      <div className="rt-feat-list">
+                        {entry.feats.map((feat, featIndex) => <article className="rt-feat-card" key={feat.id}>
+                          <header className="rt-feat-heading"><div><span className="eyebrow">FEAT / {String(featIndex + 1).padStart(2, '0')}</span><p>Bukti pendukung untuk {entry.name.trim() || (activeSection === 'resistance' ? 'Resistance ini' : 'Ability ini')}.</p></div><button type="button" className="rt-feat-remove" aria-label="Hapus feat" onClick={() => removeFeat(evidenceKey, entry.id, feat.id)}><Trash2 size={13} /> Hapus feat</button></header>
+                          {renderContentEditor(feat, { kind: 'feat', section: evidenceKey, entryId: entry.id, featId: feat.id }, 'feat', true, 10)}
+                        </article>)}
+                        <button type="button" className="rt-add-feat" onClick={() => addFeat(evidenceKey, entry.id)}><Plus size={14} /> Tambah Feat</button>
+                      </div>
+                    </article>)}
+                  </div>}
+                </div>
+              </> : renderContentEditor(activeContent, { kind: 'section', key: activeSection }, activeMeta.label, activeSection !== 'introduction', activeMeta.imageLimit)}
             </section>
           </div>
 
           <div className="rt-editor-footer">
-            <div className="rt-editor-word-total"><span>TOTAL SELURUH BAGIAN</span><b>{wordCount.toLocaleString('id-ID')} <small>kata</small></b><small>Batas dihitung terpisah untuk tiap bagian.</small></div>
+            <div className="rt-editor-word-total"><span>TOTAL SELURUH BAGIAN</span><b>{wordCount.toLocaleString('id-ID')} <small>kata</small></b><small>Batas dihitung per bagian, termasuk seluruh kategori statistik dan feat.</small></div>
             <label className="rt-publish-toggle"><input type="checkbox" checked={draft.is_published} onChange={event => setDraft(current => current ? ({ ...current, is_published: event.target.checked }) : current)} /><span><b>Publikasikan</b><small>{draft.is_published ? 'Thread dapat dibaca publik setelah disimpan.' : 'Thread disimpan sebagai draft dan tidak terlihat publik.'}</small></span></label>
             <div className="rt-editor-actions"><button className="button secondary" type="button" onClick={() => void abandonDraft()} disabled={saving || cropBusy}>Batal</button><button className="button primary" type="button" onClick={() => void save()} disabled={saving || cropBusy}><Save size={15} /> {saving ? 'Menyimpan…' : draft.is_published ? 'Simpan & publikasikan' : 'Simpan draft'}</button></div>
           </div>
         </div>
       ) : (
         <div className="rt-owner-list">
-          {loading ? <div className="empty-state">Memuat Respect Thread…</div> : items.length === 0 ? <div className="rt-owner-empty"><BookOpen size={26} /><h3>Belum ada Respect Thread.</h3><p>Buat thread pertama untuk mengisi arsip publik Ivory Diary.</p><button className="button primary" type="button" onClick={startNew}><Plus size={15} /> Buat Respect Thread</button></div> : items.map(item => (
-            <article className="rt-owner-row" key={item.id}>
+          {loading ? <div className="empty-state">Memuat Respect Thread…</div> : items.length === 0 ? <div className="rt-owner-empty"><BookOpen size={26} /><h3>Belum ada Respect Thread.</h3><p>Buat thread pertama untuk mengisi arsip publik Ivory Diary.</p><button className="button primary" type="button" onClick={startNew}><Plus size={15} /> Buat Respect Thread</button></div> : items.map(item => {
+            const sections = normalizeSections(item.sections);
+            const filled = sectionMeta.filter(meta => sectionIsFilled(sections[meta.key], meta.key)).length;
+            return <article className="rt-owner-row" key={item.id}>
               <div className="rt-owner-row-icon"><BookOpen size={18} /></div>
-              <div className="rt-owner-row-copy"><div><b>{item.title}</b><span className={item.is_published ? 'rt-status-published' : 'rt-status-draft'}>{item.is_published ? 'PUBLIC' : 'DRAFT'}</span></div><small>{[item.character_name, item.universe].filter(Boolean).join(' · ') || item.slug}</small><small>{sectionMeta.filter(meta => item.sections?.[meta.key]?.description?.trim()).length} bagian berisi · {totalWords(normalizeSections(item.sections))} kata</small></div>
+              <div className="rt-owner-row-copy"><div><b>{item.title}</b><span className={item.is_published ? 'rt-status-published' : 'rt-status-draft'}>{item.is_published ? 'PUBLIC' : 'DRAFT'}</span></div><small>{[item.character_name, item.universe].filter(Boolean).join(' · ') || item.slug}</small><small>{filled} bagian berisi · {totalWords(sections).toLocaleString('id-ID')} kata</small></div>
               <div className="rt-owner-row-actions"><button type="button" onClick={() => onNavigate('/respect-thread/' + encodeURIComponent(item.slug))} disabled={!item.is_published}><ExternalLink size={14} /> Lihat</button><button type="button" onClick={() => startEdit(item)}><Pencil size={14} /> Edit</button><button type="button" className="danger-text" onClick={() => void deleteThread(item)} disabled={saving}><Trash2 size={14} /> Hapus</button></div>
-            </article>
-          ))}
+            </article>;
+          })}
         </div>
       )}
 
-      {cropFile && <div className="rt-crop-overlay"><div className="rt-crop-dialog"><div className="rt-crop-heading"><span className="eyebrow">RESPECT THREAD / PHOTO STUDIO</span><button type="button" aria-label="Tutup crop foto" onClick={() => !cropBusy && setCropFile(null)} disabled={cropBusy}><X size={17} /></button></div><ImageCropper file={cropFile} busy={cropBusy} maxOutputBytes={MAX_IMAGE_BYTES} onCancel={() => !cropBusy && setCropFile(null)} onComplete={uploadCroppedImage} /></div></div>}
+      {cropFile && cropTarget && <div className="rt-crop-overlay"><div className="rt-crop-dialog"><div className="rt-crop-heading"><span className="eyebrow">RESPECT THREAD / PHOTO STUDIO</span><button type="button" aria-label="Tutup crop foto" onClick={() => { if (!cropBusy) { setCropFile(null); setCropTarget(null); } }} disabled={cropBusy}><X size={17} /></button></div><ImageCropper file={cropFile} busy={cropBusy} maxOutputBytes={MAX_IMAGE_BYTES} onCancel={() => { if (!cropBusy) { setCropFile(null); setCropTarget(null); } }} onComplete={uploadCroppedImage} /></div></div>}
     </section>
   );
 }

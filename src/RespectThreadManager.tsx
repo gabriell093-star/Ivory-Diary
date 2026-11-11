@@ -582,7 +582,17 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                 </details>
                 <div className="rt-stat-editor">
                   <div className="rt-evidence-heading"><div><span className="eyebrow">STATISTICS / 04 CATEGORIES</span><h4>Statistik karakter</h4><p>Pilih kategori yang sedang dikerjakan. Setiap kategori menyimpan deskripsi, referensi, dan foto secara terpisah.</p></div></div>
-                  <div className="rt-stat-tabs" role="tablist" aria-label="Kategori statistik">
+                  <div className="rt-stat-tabs" role="tablist" aria-label="Kategori statistik" onKeyDown={event => {
+                    const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
+                      : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+                    if (!direction) return;
+                    event.preventDefault();
+                    const currentIndex = statMeta.findIndex(meta => meta.key === activeStatCategory);
+                    const nextIndex = (currentIndex + direction + statMeta.length) % statMeta.length;
+                    const nextCategory = statMeta[nextIndex].key;
+                    setActiveStatCategory(nextCategory);
+                    document.getElementById('rt-stat-tab-' + nextCategory)?.focus();
+                  }}>
                     {statMeta.map((meta, index) => {
                       const category = activeContent.categories?.[meta.key] || blankContent();
                       const filled = contentIsFilled(category);

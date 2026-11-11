@@ -585,11 +585,19 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                   <div className="rt-stat-tabs" role="tablist" aria-label="Kategori statistik">
                     {statMeta.map((meta, index) => {
                       const category = activeContent.categories?.[meta.key] || blankContent();
-                      return <button key={meta.key} type="button" role="tab" aria-selected={activeStatCategory === meta.key} className={activeStatCategory === meta.key ? 'active' : ''} onClick={() => setActiveStatCategory(meta.key)}><span>{String(index + 1).padStart(2, '0')}</span><b>{meta.label}</b><small>{contentIsFilled(category) ? 'Terisi' : 'Belum diisi'}</small></button>;
+                      const filled = contentIsFilled(category);
+                      return <button key={meta.key} id={'rt-stat-tab-' + meta.key} type="button" role="tab" aria-selected={activeStatCategory === meta.key} aria-controls="rt-stat-category-panel" tabIndex={activeStatCategory === meta.key ? 0 : -1} className={activeStatCategory === meta.key ? 'active' : ''} onClick={() => setActiveStatCategory(meta.key)}>
+                        <span className="rt-stat-tab-number">{String(index + 1).padStart(2, '0')}</span>
+                        <b>{meta.label}</b>
+                        <small className={filled ? 'is-filled' : ''}>{filled ? 'Terisi' : 'Belum diisi'}</small>
+                      </button>;
                     })}
                   </div>
-                  <div className="rt-stat-category-panel">
-                    <div className="rt-stat-category-heading"><span className="eyebrow">STATISTIC / {String(statMeta.findIndex(meta => meta.key === activeStatCategory) + 1).padStart(2, '0')}</span><h5>{statMeta.find(meta => meta.key === activeStatCategory)?.label}</h5></div>
+                  <div className="rt-stat-category-panel" id="rt-stat-category-panel" role="tabpanel" aria-labelledby={'rt-stat-tab-' + activeStatCategory}>
+                    <div className="rt-stat-category-heading">
+                      <div><span className="eyebrow">STATISTIC / {String(statMeta.findIndex(meta => meta.key === activeStatCategory) + 1).padStart(2, '0')}</span><h5>{statMeta.find(meta => meta.key === activeStatCategory)?.label}</h5></div>
+                      <span className="rt-stat-category-note">Deskripsi, referensi, dan foto disimpan khusus untuk kategori ini.</span>
+                    </div>
                     {renderContentEditor(activeContent.categories?.[activeStatCategory] || blankContent(), { kind: 'statistic', category: activeStatCategory }, statMeta.find(meta => meta.key === activeStatCategory)?.label || 'statistik', true, 10)}
                   </div>
                 </div>
@@ -599,16 +607,29 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                   {renderContentEditor(activeContent, { kind: 'section', key: activeSection }, 'catatan umum', true, 10)}
                 </details>
                 <div className="rt-evidence-manager">
-                  <div className="rt-evidence-heading"><div><span className="eyebrow">{activeSection === 'resistance' ? 'RESISTANCE ARCHIVE' : 'ABILITY ARCHIVE'}</span><h4>{activeSection === 'resistance' ? 'Daftar Resistances' : 'Daftar Hax & Ability'}</h4><p>Setiap entri memiliki feat pendukung sendiri. Deskripsi, URL, dan foto dikelola per feat.</p></div><button type="button" className="rt-add-evidence" onClick={() => addEvidenceEntry(evidenceKey)}><Plus size={15} /> {activeSection === 'resistance' ? 'Tambah Resistance' : 'Tambah Ability'}</button></div>
+                  <div className="rt-evidence-heading"><div><span className="eyebrow">{activeSection === 'resistance' ? 'RESISTANCE ARCHIVE' : 'ABILITY ARCHIVE'}</span><h4>{activeSection === 'resistance' ? 'Daftar Resistances' : 'Daftar Hax & Ability'}</h4><p>Kelompokkan setiap jenis resistance atau ability. Tambahkan satu atau beberapa feat sebagai bukti pendukung, lengkap dengan sumber dan foto.</p></div><div className="rt-evidence-heading-actions"><span className="rt-entry-total">{evidenceEntries.length} {evidenceEntries.length === 1 ? 'entri' : 'entri'}</span><button type="button" className="rt-add-evidence" onClick={() => addEvidenceEntry(evidenceKey)}><Plus size={15} /> {activeSection === 'resistance' ? 'Tambah Resistance' : 'Tambah Ability'}</button></div></div>
                   {evidenceEntries.length === 0 ? <div className="rt-evidence-empty"><BookOpen size={19} /><p>Belum ada entri. Tambahkan satu {activeSection === 'resistance' ? 'jenis resistance' : 'ability'}, kemudian tambahkan feat pendukungnya.</p></div> : <div className="rt-evidence-list">
                     {evidenceEntries.map((entry, entryIndex) => <article className="rt-evidence-entry" key={entry.id}>
-                      <header className="rt-evidence-entry-heading"><div><span className="eyebrow">{activeSection === 'resistance' ? 'RESISTANCE' : 'ABILITY'} / {String(entryIndex + 1).padStart(2, '0')}</span><label className="field"><span>Nama {activeSection === 'resistance' ? 'Resistance' : 'Ability'} *</span><input value={entry.name} maxLength={160} placeholder={activeSection === 'resistance' ? 'Contoh: Fire Manipulation Resistance' : 'Contoh: Spatial Manipulation'} onChange={event => updateEvidenceEntry(evidenceKey, entry.id, { name: event.target.value })} /></label></div><button type="button" className="rt-evidence-remove" aria-label="Hapus entri" onClick={() => removeEvidenceEntry(evidenceKey, entry.id)}><Trash2 size={14} /> Hapus entri</button></header>
+                      <header className="rt-evidence-entry-heading">
+                        <div className="rt-evidence-entry-main">
+                          <span className="rt-evidence-entry-index">{String(entryIndex + 1).padStart(2, '0')}</span>
+                          <div className="rt-evidence-entry-fields">
+                            <span className="eyebrow">{activeSection === 'resistance' ? 'RESISTANCE ENTRY' : 'ABILITY ENTRY'}</span>
+                            <label className="field"><span>Nama {activeSection === 'resistance' ? 'Resistance' : 'Ability'} *</span><input value={entry.name} maxLength={160} placeholder={activeSection === 'resistance' ? 'Contoh: Fire Manipulation Resistance' : 'Contoh: Spatial Manipulation'} onChange={event => updateEvidenceEntry(evidenceKey, entry.id, { name: event.target.value })} /></label>
+                          </div>
+                        </div>
+                        <div className="rt-evidence-entry-actions">
+                          <span className="rt-feat-total">{entry.feats.length} {entry.feats.length === 1 ? 'feat' : 'feat'}</span>
+                          <button type="button" className="rt-evidence-remove" aria-label="Hapus entri" onClick={() => removeEvidenceEntry(evidenceKey, entry.id)}><Trash2 size={14} /> Hapus entri</button>
+                        </div>
+                      </header>
                       <div className="rt-feat-list">
+                        {entry.feats.length === 0 && <div className="rt-feat-empty">Belum ada feat. Tambahkan bukti pertama untuk entri ini.</div>}
                         {entry.feats.map((feat, featIndex) => <article className="rt-feat-card" key={feat.id}>
                           <header className="rt-feat-heading"><div><span className="eyebrow">FEAT / {String(featIndex + 1).padStart(2, '0')}</span><p>Bukti pendukung untuk {entry.name.trim() || (activeSection === 'resistance' ? 'Resistance ini' : 'Ability ini')}.</p></div><button type="button" className="rt-feat-remove" aria-label="Hapus feat" onClick={() => removeFeat(evidenceKey, entry.id, feat.id)}><Trash2 size={13} /> Hapus feat</button></header>
                           {renderContentEditor(feat, { kind: 'feat', section: evidenceKey, entryId: entry.id, featId: feat.id }, 'feat', true, 10)}
                         </article>)}
-                        <button type="button" className="rt-add-feat" onClick={() => addFeat(evidenceKey, entry.id)}><Plus size={14} /> Tambah Feat</button>
+                        <button type="button" className="rt-add-feat" onClick={() => addFeat(evidenceKey, entry.id)}><Plus size={14} /> Tambah feat pendukung</button>
                       </div>
                     </article>)}
                   </div>}

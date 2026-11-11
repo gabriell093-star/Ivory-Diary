@@ -3,7 +3,13 @@ import { ArrowLeft, ArrowUpRight, BookOpen, ExternalLink, Image as ImageIcon } f
 import { supabase } from './lib';
 
 type MediaItem = { path: string; url: string };
-type ThreadSection = { description: string; links?: string[]; link?: string; images: MediaItem[] };
+type ThreadContent = { description?: string; links?: string[]; link?: string; images?: MediaItem[] };
+type EvidenceFeat = ThreadContent & { id?: string };
+type EvidenceEntry = { id?: string; name?: string; feats?: EvidenceFeat[] };
+type ThreadSection = ThreadContent & {
+  categories?: Record<string, ThreadContent>;
+  entries?: EvidenceEntry[];
+};
 type ThreadRecord = {
   id: string;
   slug: string;
@@ -16,14 +22,22 @@ type ThreadRecord = {
   updated_at: string;
 };
 
+const statMeta = [
+  { key: 'attack_potency', label: 'Attack Potency', index: '01' },
+  { key: 'durability', label: 'Durability', index: '02' },
+  { key: 'speed', label: 'Speed', index: '03' },
+  { key: 'stamina', label: 'Stamina', index: '04' },
+] as const;
+
 const sectionMeta = [
   { key: 'introduction', label: 'Introduction', index: '01', hint: 'Pengenalan karakter dan konteks.' },
   { key: 'terminology', label: 'Terminology', index: '02', hint: 'Istilah khusus dan definisinya.' },
   { key: 'cosmology', label: 'Cosmology', index: '03', hint: 'Struktur dunia dan skalanya.' },
   { key: 'personality', label: 'Personality', index: '04', hint: 'Kepribadian dan karakterisasi.' },
-  { key: 'statistic', label: 'Statistic', index: '05', hint: 'Feat, statistik, dan pencapaian.' },
-  { key: 'hax_ability', label: 'Hax & Ability', index: '06', hint: 'Kemampuan khusus dan penerapannya.' },
-  { key: 'resistance', label: 'Resistance', index: '07', hint: 'Ketahanan dan resistansi.' },
+  { key: 'in_char', label: 'In Char', index: '05', hint: 'Tindakan dan konteks karakter.' },
+  { key: 'statistic', label: 'Statistics', index: '06', hint: 'Attack Potency, Durability, Speed, dan Stamina.' },
+  { key: 'resistance', label: 'Resistances', index: '07', hint: 'Jenis resistansi beserta feat pendukungnya.' },
+  { key: 'hax_ability', label: 'Hax & Ability', index: '08', hint: 'Kemampuan beserta feat pendukungnya.' },
 ] as const;
 
 const safeHttpUrl = (value?: string | null) => {
@@ -36,12 +50,55 @@ const safeHttpUrl = (value?: string | null) => {
   }
 };
 
+const normalizeContent = (content?: ThreadContent | null): ThreadContent => ({
+  description: typeof content?.description === 'string' ? content.description : '',
+  links: Array.isArray(content?.links) ? content!.links!.filter((item): item is string => typeof item === 'string')
+    : (typeof content?.link === 'string' && content.link.trim() ? [content.link] : []),
+  images: Array.isArray(content?.images) ? content!.images!.filter(item => item && typeof item.url === 'string') : [],
+});
+
+const contentIsFilled = (content?: ThreadContent | null) => {
+  const normalized = normalizeContent(content);
+  return Boolean(normalized.description.trim() || normalized.links?.some(link => link.trim()) || normalized.images?.length);
+};
+
+const sectionIsFilled = (section: ThreadSection | undefined, key: string) => {
+  if (!section) return false;
+  if (contentIsFilled(section)) return true;
+  if (key === 'statistic' && statMeta.some(meta => contentIsFilled(section.categories?.[meta.key]))) return true;
+  if ((key === 'resistance' || key === 'hax_ability') && (section.entries || []).some(entry => (
+    Boolean(entry.name?.trim()) || (entry.feats || []).some(contentIsFilled)
+  ))) return true;
+  return false;
+};
+
 function ThreadImage({ item, title, index }: { item: MediaItem; title: string; index: number }) {
   return (
     <a className="rt-image-card" href={item.url} target="_blank" rel="noreferrer">
       <img src={item.url} alt={title + ' — foto ' + (index + 1)} loading="lazy" />
       <span><ImageIcon size={13} /> Buka gambar <ArrowUpRight size={13} /></span>
     </a>
+  );
+}
+
+function PublicContentBlock({ content, title, threadTitle }: { content?: ThreadContent | null; title?: string; threadTitle: string }) {
+  const normalized = normalizeContent(content);
+  const references = (normalized.links || []).map(reference => reference.trim()).filter(Boolean);
+  const images = normalized.images || [];
+  if (!normalized.description?.trim() && references.length === 0 && images.length === 0) return null;
+
+  return (
+    <div className="rt-public-content-block">
+      {title && <h4 className="rt-public-content-title">{title}</h4>}
+      {normalized.description?.trim() && <div className="rt-section-copy">{normalized.description.split(/\n{2,}/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
+      {references.length > 0 && <div className="rt-source-links">{references.map((reference, index) => {
+        const url = safeHttpUrl(reference);
+        return url
+          ? <a className="rt-source-link" key={reference + '-' + index} href={url} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> Buka sumber / referensi {references.length > 1 ? index + 1 : ''} <ArrowUpRight size={14} /></a>
+          : <p className="rt-source-note" key={'text-' + index}>{reference}</p>;
+      })}</div>}
+      {images.length > 0 && <div className="rt-image-grid">{images.map((item, index) => <ThreadImage key={item.path || item.url} item={item} title={threadTitle} index={index} />)}</div>}
+    </div>
   );
 }
 
@@ -93,10 +150,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
 
   const sectionCount = useMemo(() => {
     if (!thread) return 0;
-    return sectionMeta.filter(({ key }) => {
-      const section = thread.sections?.[key];
-      return Boolean(section?.description?.trim() || section?.link?.trim() || section?.images?.length);
-    }).length;
+    return sectionMeta.filter(({ key }) => sectionIsFilled(thread.sections?.[key], key)).length;
   }, [thread]);
 
   if (slug) {
@@ -119,41 +173,55 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
             {(thread.character_name || thread.universe) && (
               <p className="rt-detail-meta">{[thread.character_name, thread.universe].filter(Boolean).join(' · ')}</p>
             )}
-            <p className="rt-detail-intro">Referensi karakter yang disusun berdasarkan pengenalan, konteks, statistik, kemampuan, dan bukti pendukung.</p>
+            <p className="rt-detail-intro">Referensi karakter yang disusun berdasarkan pengenalan, konteks, statistik, kemampuan, resistansi, dan bukti feat pendukung.</p>
           </div>
         </header>
 
         <nav className="rt-toc" aria-label="Daftar bagian Respect Thread">
-          {sectionMeta.map((section) => {
-            const exists = Boolean(thread.sections?.[section.key]?.description?.trim());
-            return exists ? <a key={section.key} href={'#rt-' + section.key}><span>{section.index}</span>{section.label}</a> : null;
-          })}
+          {sectionMeta.map(section => sectionIsFilled(thread.sections?.[section.key], section.key)
+            ? <a key={section.key} href={'#rt-' + section.key}><span>{section.index}</span>{section.label}</a>
+            : null)}
         </nav>
 
         <div className="rt-detail-content">
-          {sectionMeta.map((meta) => {
-            const section = thread.sections?.[meta.key];
-            if (!section?.description?.trim()) return null;
-            const rawReferences = Array.isArray(section.links) ? section.links : (section.link ? [section.link] : []);
-            const references = rawReferences.filter((reference): reference is string => typeof reference === 'string').map(reference => reference.trim()).filter(Boolean);
-            const images = Array.isArray(section.images) ? section.images : [];
+          {sectionMeta.map(meta => {
+            const section = thread.sections?.[meta.key] || {};
+            if (!sectionIsFilled(section, meta.key)) return null;
             return (
               <article className="rt-section-card" id={'rt-' + meta.key} key={meta.key}>
                 <div className="rt-section-heading"><span>{meta.index}</span><div><p className="eyebrow">RESPECT THREAD / SECTION {meta.index}</p><h2>{meta.label}</h2></div></div>
-                <div className="rt-section-copy">{section.description.split(/\n{2,}/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
-                {references.length > 0 && <div className="rt-source-links">{references.map((reference, index) => {
-                  const url = safeHttpUrl(reference);
-                  return url
-                    ? <a className="rt-source-link" key={reference + '-' + index} href={url} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> Buka sumber / referensi {references.length > 1 ? index + 1 : ''} <ArrowUpRight size={14} /></a>
-                    : <p className="rt-source-note" key={'text-' + index}>{reference}</p>;
-                })}</div>}
-                {images.length > 0 && <div className="rt-image-grid">{images.map((item, index) => <ThreadImage key={item.path || item.url} item={item} title={thread.title} index={index} />)}</div>}
+
+                {meta.key === 'statistic' ? <>
+                  <PublicContentBlock content={section} title="Statistical overview" threadTitle={thread.title} />
+                  <div className="rt-stat-public-list">
+                    {statMeta.map(category => {
+                      const content = section.categories?.[category.key];
+                      return contentIsFilled(content) ? <section className="rt-stat-public-card" key={category.key}>
+                        <header><span className="eyebrow">STATISTICS / {category.index}</span><h3>{category.label}</h3></header>
+                        <PublicContentBlock content={content} threadTitle={thread.title} />
+                      </section> : null;
+                    })}
+                  </div>
+                </> : meta.key === 'resistance' || meta.key === 'hax_ability' ? <>
+                  <PublicContentBlock content={section} title="General notes" threadTitle={thread.title} />
+                  <div className="rt-evidence-public-list">
+                    {(section.entries || []).map((entry, entryIndex) => <article className="rt-evidence-public-card" key={entry.id || entryIndex}>
+                      <header><span className="eyebrow">{meta.key === 'resistance' ? 'RESISTANCE' : 'ABILITY'} / {String(entryIndex + 1).padStart(2, '0')}</span><h3>{entry.name || (meta.key === 'resistance' ? 'Resistance' : 'Ability')}</h3></header>
+                      <div className="rt-public-feat-list">
+                        {(entry.feats || []).map((feat, featIndex) => <article className="rt-public-feat-card" key={feat.id || featIndex}>
+                          <div className="rt-public-feat-heading"><span className="eyebrow">FEAT / {String(featIndex + 1).padStart(2, '0')}</span></div>
+                          <PublicContentBlock content={feat} threadTitle={thread.title} />
+                        </article>)}
+                      </div>
+                    </article>)}
+                  </div>
+                </> : <PublicContentBlock content={section} threadTitle={thread.title} />}
               </article>
             );
           })}
         </div>
 
-        <footer className="rt-detail-footer"><span>IVORY DIARY / RESPECT THREAD</span><span>{sectionCount} BAGIAN TERISI</span></footer>
+        <footer className="rt-detail-footer"><span>IVORY DIARY / RESPECT THREAD</span><span>{sectionCount} / 08 BAGIAN TERISI</span></footer>
       </section>
     );
   }
@@ -164,21 +232,21 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
         <div className="rt-list-hero-copy">
           <span className="eyebrow">IVORY DIARY / RESPECT THREAD</span>
           <h1>Respect <em>Thread.</em></h1>
-          <p>Temukan dokumentasi karakter yang disusun dengan penjelasan, referensi, statistik, kemampuan, dan bukti pendukung.</p>
+          <p>Temukan dokumentasi karakter yang disusun dengan penjelasan, referensi, statistik, kemampuan, resistansi, dan bukti pendukung.</p>
         </div>
       </header>
       <div className="rt-list-toolbar"><span>{loading ? 'MEMUAT THREAD…' : String(items.length).padStart(2, '0') + ' THREAD TERSEDIA'}</span><span>TERBUKA UNTUK PUBLIK</span></div>
       {error ? <div className="rt-empty"><p>{error}</p><button className="button secondary" onClick={() => window.location.reload()}>Muat ulang</button></div>
         : loading ? <div className="rt-loading">Memuat daftar Respect Thread…</div>
           : items.length === 0 ? <div className="rt-empty"><span className="eyebrow">ARCHIVE / EMPTY</span><h2>Belum ada Respect Thread.</h2><p>Thread yang telah dipublikasikan akan muncul di halaman ini.</p></div>
-            : <div className="rt-list-grid">{items.map((item, index) => {
-              const count = sectionMeta.filter(({ key }) => Boolean(item.sections?.[key]?.description?.trim())).length;
+            : <div className="rt-list-grid">{items.map(item => {
+              const count = sectionMeta.filter(({ key }) => sectionIsFilled(item.sections?.[key], key)).length;
               const cover = item.sections?.introduction?.images?.[0]?.url;
               return (
                 <button type="button" className="rt-list-card" key={item.id} onClick={() => onNavigate('/respect-thread/' + encodeURIComponent(item.slug))}>
                   <span className="rt-card-cover">{cover ? <img src={cover} alt="" loading="lazy" /> : <BookOpen size={24} />}</span>
                   <div className="rt-card-main">
-                    <span className="rt-card-overline">RESPECT THREAD <span>{String(count).padStart(2, '0')} / 07 BAGIAN</span></span>
+                    <span className="rt-card-overline">RESPECT THREAD <span>{String(count).padStart(2, '0')} / 08 BAGIAN</span></span>
                     <h2>{item.title}</h2>
                     <p className="rt-card-meta">{[item.character_name, item.universe].filter(Boolean).join(' · ') || 'Karakter / Universe tidak dicantumkan'}</p>
                     {item.sections?.introduction?.description?.trim() && <p className="rt-card-excerpt">{item.sections.introduction.description.trim().replace(/\s+/g, ' ').slice(0, 145)}{item.sections.introduction.description.trim().length > 145 ? '…' : ''}</p>}

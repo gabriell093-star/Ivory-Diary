@@ -157,8 +157,11 @@ function storagePathFromPublicUrl(value: unknown): string | null {
 async function removeIvoryMedia(paths: unknown[]) {
   const unique = [...new Set(paths.map(safeStoragePath).filter((value): value is string => Boolean(value)))];
   if (!unique.length) return;
-  const { error } = await db.storage.from("ivory-public").remove(unique);
-  if (error) console.error("Ivory media cleanup failed:", error.message);
+  // Keep Storage removal requests small while allowing any number of images per thread.
+  for (let index = 0; index < unique.length; index += 100) {
+    const { error } = await db.storage.from("ivory-public").remove(unique.slice(index, index + 100));
+    if (error) console.error("Ivory media cleanup failed:", error.message);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -457,9 +460,6 @@ function validateValues(table: string, raw: unknown): Record<string, unknown> {
     if (!rules[key](raw[key])) {
       throw new RequestBodyError("Format atau ukuran kolom " + key + " tidak valid.", 400);
     }
-  }
-  if (table === "respect_threads") {
-    validateRespectSections(raw.sections);
   }
   if (table === "testimonials") {
     const hasPaths = Object.prototype.hasOwnProperty.call(raw, "image_paths");

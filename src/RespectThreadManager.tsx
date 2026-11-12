@@ -614,6 +614,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
 
       {draft ? (
         <div className="rt-editor">
+          <fieldset className="rt-editor-fieldset" disabled={saving || cropBusy}>
           <div className="rt-editor-toolbar"><div><span className="eyebrow">THREAD EDITOR / {draft.id ? 'EDIT' : 'NEW ENTRY'}</span><h3>{draft.id ? 'Perbarui thread' : 'Thread baru'}</h3><p>Susun materi secara bertahap. Data pada kategori dan feat lain tetap tersimpan ketika Anda berpindah bagian.</p></div><button type="button" className="rt-editor-close" onClick={() => void abandonDraft()} disabled={saving || cropBusy}><X size={16} /> Tutup editor</button></div>
 
           <div className="rt-editor-meta">
@@ -723,6 +724,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
             <label className="rt-publish-toggle"><input type="checkbox" checked={draft.is_published} onChange={event => setDraft(current => current ? ({ ...current, is_published: event.target.checked }) : current)} /><span><b>Publikasikan</b><small>{draft.is_published ? 'Thread dapat dibaca publik setelah disimpan.' : 'Thread disimpan sebagai draft dan tidak terlihat publik.'}</small></span></label>
             <div className="rt-editor-actions"><button className="button secondary" type="button" onClick={() => void abandonDraft()} disabled={saving || cropBusy}>Batal</button><button className="button primary" type="button" onClick={() => void save()} disabled={saving || cropBusy}><Save size={15} /> {saving ? 'Menyimpan…' : draft.is_published ? 'Simpan & publikasikan' : 'Simpan draft'}</button></div>
           </div>
+          </fieldset>
         </div>
       ) : (
         <div className="rt-owner-list">

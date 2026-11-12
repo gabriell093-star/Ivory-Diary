@@ -33,6 +33,9 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
   const [preset, setPreset] = useState<Preset>(aspectRatio === 4 / 5 ? 'portrait' : 'original');
   const [mode, setMode] = useState<'automatic' | 'manual'>('automatic');
   const [error, setError] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const cropInFlightRef = useRef(false);
+  const controlsBusy = busy || processing;
 
   const ratioForPreset = (value: Preset, originalRatio: number) => {
     if (value === 'square') return 1;
@@ -125,6 +128,8 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
   };
 
   useEffect(() => {
+    cropInFlightRef.current = false;
+    setProcessing(false);
     let cancelled = false;
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -326,7 +331,7 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
     const image = imageRef.current;
     const rect = selection;
     const frame = display;
-    if (!image || !frame || !rect || busy) return;
+    if (!image || !frame || !rect || controlsBusy || cropInFlightRef.current) return;
     const sx = Math.max(0, (rect.x - frame.x) / frame.scale);
     const sy = Math.max(0, (rect.y - frame.y) / frame.scale);
     const sw = Math.min(image.naturalWidth - sx, rect.w / frame.scale);
@@ -344,28 +349,40 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
       setError('Browser tidak dapat memproses foto ini.');
       return;
     }
-    context.drawImage(image, sx, sy, sw, sh, 0, 0, output.width, output.height);
-    output.toBlob(async blob => {
-      if (!blob) {
-        setError('Gagal membuat hasil crop. Coba lagi.');
-        return;
-      }
-      if (blob.size > maxOutputBytes) {
-        const maxMb = (maxOutputBytes / (1024 * 1024)).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-        setError('Hasil foto terlalu besar. Ukuran maksimal ' + maxMb + ' MB; perkecil area crop lalu coba lagi.');
-        return;
-      }
-      const cropped = new File(
-        [blob],
-        (file.name.lastIndexOf('.') > 0 ? file.name.slice(0, file.name.lastIndexOf('.')) : file.name) + '-crop.jpg',
-        { type: 'image/jpeg', lastModified: Date.now() },
-      );
-      try {
-        await onComplete(cropped);
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Upload gagal. Periksa koneksi lalu coba lagi.');
-      }
-    }, 'image/jpeg', 0.84);
+    try {
+      context.drawImage(image, sx, sy, sw, sh, 0, 0, output.width, output.height);
+    } catch {
+      setError('Browser tidak dapat menyiapkan foto. Coba ukuran sumber yang lebih kecil.');
+      return;
+    }
+    cropInFlightRef.current = true;
+    setProcessing(true);
+    try {
+      output.toBlob(async blob => {
+        try {
+          if (!blob) throw new Error('Gagal membuat hasil crop. Coba lagi.');
+          if (blob.size > maxOutputBytes) {
+            const maxMb = (maxOutputBytes / (1024 * 1024)).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+            throw new Error('Hasil foto terlalu besar. Ukuran maksimal ' + maxMb + ' MB; perkecil area crop lalu coba lagi.');
+          }
+          const cropped = new File(
+            [blob],
+            (file.name.lastIndexOf('.') > 0 ? file.name.slice(0, file.name.lastIndexOf('.')) : file.name) + '-crop.jpg',
+            { type: 'image/jpeg', lastModified: Date.now() },
+          );
+          await onComplete(cropped);
+        } catch (cause) {
+          setError(cause instanceof Error ? cause.message : 'Upload gagal. Periksa koneksi lalu coba lagi.');
+        } finally {
+          cropInFlightRef.current = false;
+          setProcessing(false);
+        }
+      }, 'image/jpeg', 0.84);
+    } catch {
+      cropInFlightRef.current = false;
+      setProcessing(false);
+      setError('Browser tidak dapat menyelesaikan proses crop. Silakan coba lagi.');
+    }
   };
 
   return (
@@ -376,18 +393,18 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
           <h2>Atur area foto</h2>
           <p className="crop-file-name">{file.name} · {(file.size / (1024 * 1024)).toFixed(1)} MB</p>
         </div>
-        <button type="button" className="crop-cancel-button" onClick={onCancel} disabled={busy}>Batal</button>
+        <button type="button" className="crop-cancel-button" onClick={onCancel} disabled={controlsBusy}>Batal</button>
       </div>
 
       <div className="crop-mode-switch" aria-label="Mode crop">
-        <button type="button" className={mode === 'automatic' ? 'active' : ''} onClick={() => changeMode('automatic')} disabled={busy}>Ukuran otomatis</button>
-        <button type="button" className={mode === 'manual' ? 'active' : ''} onClick={() => changeMode('manual')} disabled={busy}>Crop manual</button>
+        <button type="button" className={mode === 'automatic' ? 'active' : ''} onClick={() => changeMode('automatic')} disabled={controlsBusy}>Ukuran otomatis</button>
+        <button type="button" className={mode === 'manual' ? 'active' : ''} onClick={() => changeMode('manual')} disabled={controlsBusy}>Crop manual</button>
       </div>
 
       {mode === 'automatic' ? (
         <div className="crop-preset-row">
           {(['original', 'square', 'portraitThreeFour', 'portrait', 'landscapeFourThree', 'landscape'] as Preset[]).map(item => (
-            <button type="button" key={item} className={preset === item ? 'active' : ''} onClick={() => changePreset(item)} disabled={busy}>
+            <button type="button" key={item} className={preset === item ? 'active' : ''} onClick={() => changePreset(item)} disabled={controlsBusy}>
               {presetNames[item]}
             </button>
           ))}
@@ -426,24 +443,24 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
             </div>
             <div className="crop-direction-pad" aria-label="Kontrol posisi crop">
               <span />
-              <button type="button" aria-label="Geser ke atas" onClick={() => nudgeSelection(0, -1)} disabled={busy}>↑</button>
+              <button type="button" aria-label="Geser ke atas" onClick={() => nudgeSelection(0, -1)} disabled={controlsBusy}>↑</button>
               <span />
-              <button type="button" aria-label="Geser ke kiri" onClick={() => nudgeSelection(-1, 0)} disabled={busy}>←</button>
-              <button type="button" className="crop-direction-center" onClick={reset} disabled={busy} aria-label="Atur ulang posisi">•</button>
-              <button type="button" aria-label="Geser ke kanan" onClick={() => nudgeSelection(1, 0)} disabled={busy}>→</button>
+              <button type="button" aria-label="Geser ke kiri" onClick={() => nudgeSelection(-1, 0)} disabled={controlsBusy}>←</button>
+              <button type="button" className="crop-direction-center" onClick={reset} disabled={controlsBusy} aria-label="Atur ulang posisi">•</button>
+              <button type="button" aria-label="Geser ke kanan" onClick={() => nudgeSelection(1, 0)} disabled={controlsBusy}>→</button>
               <span />
-              <button type="button" aria-label="Geser ke bawah" onClick={() => nudgeSelection(0, 1)} disabled={busy}>↓</button>
+              <button type="button" aria-label="Geser ke bawah" onClick={() => nudgeSelection(0, 1)} disabled={controlsBusy}>↓</button>
               <span />
             </div>
           </div>
           <div className="crop-size-controls">
             <label>
               <span><b>Lebar area</b><output>{Math.round(selection.w / display.w * 100)}%</output></span>
-              <input type="range" min="15" max="100" step="1" value={Math.max(15,Math.min(100,Math.round(selection.w / display.w * 100)))} onChange={event => setManualDimension('width', Number(event.target.value))} disabled={busy}/>
+              <input type="range" min="15" max="100" step="1" value={Math.max(15,Math.min(100,Math.round(selection.w / display.w * 100)))} onChange={event => setManualDimension('width', Number(event.target.value))} disabled={controlsBusy}/>
             </label>
             <label>
               <span><b>Tinggi area</b><output>{Math.round(selection.h / display.h * 100)}%</output></span>
-              <input type="range" min="15" max="100" step="1" value={Math.max(15,Math.min(100,Math.round(selection.h / display.h * 100)))} onChange={event => setManualDimension('height', Number(event.target.value))} disabled={busy}/>
+              <input type="range" min="15" max="100" step="1" value={Math.max(15,Math.min(100,Math.round(selection.h / display.h * 100)))} onChange={event => setManualDimension('height', Number(event.target.value))} disabled={controlsBusy}/>
             </label>
           </div>
         </div>
@@ -451,10 +468,10 @@ export default function ImageCropper({ file, onCancel, onComplete, busy = false,
       {error && <p className="crop-error" role="alert">{error}</p>}
 
       <div className="crop-editor-actions">
-        <button type="button" className="crop-action-secondary" onClick={reset} disabled={busy}>Atur ulang</button>
-        <button type="button" className="crop-action-secondary" onClick={useWholePhoto} disabled={busy}>Gunakan seluruh foto</button>
-        <button type="button" className="crop-action-primary" onClick={crop} disabled={busy || !selection || !display}>
-          {busy ? 'Mengunggah…' : 'Gunakan hasil crop'}
+        <button type="button" className="crop-action-secondary" onClick={reset} disabled={controlsBusy}>Atur ulang</button>
+        <button type="button" className="crop-action-secondary" onClick={useWholePhoto} disabled={controlsBusy}>Gunakan seluruh foto</button>
+        <button type="button" className="crop-action-primary" onClick={crop} disabled={controlsBusy || !selection || !display}>
+          {busy ? 'Mengunggah…' : processing ? 'Menyiapkan…' : 'Gunakan hasil crop'}
         </button>
       </div>
     </section>

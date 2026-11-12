@@ -594,9 +594,7 @@ Deno.serve(async (req: Request) => {
       });
       if (error) throw error;
       if (!data) return respond({ error: "Kata sandi saat ini salah atau kata sandi baru belum memenuhi 12 karakter." }, 400);
-      await db.from("owner_sessions").update({ revoked_at: new Date().toISOString() })
-        .eq("owner_id", session.owner_id).is("revoked_at", null);
-      return respond({ ok: true, message: "Kata sandi diperbarui. Silakan login kembali." });
+      return respond({ ok: true, message: "Kata sandi diperbarui. Semua sesi Owner telah dicabut; silakan login kembali." });
     }
 
     if (action === "cleanup-media" && req.method === "POST") {

@@ -76,7 +76,7 @@ function App(){
   const verifySession=async()=>{
    try{
     const result=await adminRequest<{owner:Owner}>(token,'me',{},'GET');
-    if(active)setOwner(result.owner);
+    if(active&&(owner?.username!==result.owner.username||owner?.display_name!==result.owner.display_name))setOwner(result.owner);
    }catch(error){
     if(!active)return;
     if(error instanceof AdminRequestError&&error.status===401)clearOwnerSession();
@@ -93,7 +93,7 @@ function App(){
    window.removeEventListener('focus',onFocus);
    document.removeEventListener('visibilitychange',onVisibility);
   };
- },[token]);
+ },[token,owner?.username,owner?.display_name]);
  const fetchAdmin=async(tab:AdminTab)=>{
   const requestId=++adminFetchSequence.current;
   setAdminTab(tab);
@@ -108,7 +108,7 @@ function App(){
    setNotice(error instanceof Error?error.message:'Gagal memuat data.');
   }
  };
- const fetchAdmin=async(tab:AdminTab)=>{setAdminTab(tab);try{const result=await adminRequest<{data:Record<string,any>[]}>(token,'list&table='+encodeURIComponent(tab),{},'GET');setAdminRows(result.data||[]);setNotice('')}catch(e:any){setNotice(e.message||'Gagal memuat data.')}};
+ 
  const refreshPublicContent=async(tab:AdminTab):Promise<boolean>=>{
   if(!supabase)return false;
   try{
@@ -149,7 +149,7 @@ function App(){
   if(publicKey)headers.apikey=publicKey;
   const response=await fetch(ADMIN_URL+'?action=upload',{method:'POST',headers,body:form});
   const result=await response.json().catch(()=>({error:'Respons server upload tidak valid.'}));
-  if(!response.ok)throw new Error(result.error||'Upload foto gagal. Silakan coba lagi.');
+  if(!response.ok){if(response.status===401)clearOwnerSession();throw new AdminRequestError(result.error||'Upload foto gagal. Silakan coba lagi.',response.status)}
   if(typeof result.url!=='string'||typeof result.path!=='string')throw new Error('Server tidak mengembalikan alamat foto yang valid.');
   return result as {path:string;url:string};
 };

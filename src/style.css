@@ -3388,3 +3388,8 @@
     line-height:1.9;
   }
 }
+
+
+/* Keep disabled workspace fieldsets visually aligned with the existing design. */
+.edit-fields{display:block;min-width:0;margin:0;padding:0;border:0}
+.rt-editor-fieldset{display:block;width:100%;min-width:0;margin:0;padding:0;border:0}

@@ -244,7 +244,7 @@ const respectSectionWordLimits: Record<string, number> = {
   resistance: 15000,
 };
 
-const respectLinkPattern = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+|(?<![\w@.-])(?:localhost(?::\d+)?(?:\/[^\s<>()]*)?|\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/[^\s<>()]*)?|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>()]*)?))/iu;
+const respectLinkPattern = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+|(?<![\w@.-])(?=[a-z0-9-]{2,}\.)(?=[a-z0-9-]*[a-z])[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?::\d+)?(?:\/[^\s<>()]*)?|\blocalhost(?::\d+)?(?:\/[^\s<>()]*)?)/iu;
 
 function containsRespectLink(value: string): boolean {
   return respectLinkPattern.test(value);

@@ -420,6 +420,13 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       const contents = sectionContents(section, meta.key);
       const sectionWords = sectionWordCount(section, meta.key);
       if (sectionWords > meta.maxWords) return 'Bagian ' + meta.label + ' maksimal ' + meta.maxWords.toLocaleString('id-ID') + ' kata.';
+      if (meta.key === 'statistic') {
+        for (const statistic of statMeta) {
+          const level = section.categories?.[statistic.key]?.level || '';
+          if (level.length > 180) return 'Nilai ' + statistic.label + ' maksimal 180 karakter.';
+          if (containsRespectLink(level)) return 'Nilai ' + statistic.label + ' tidak boleh berisi URL atau tautan.';
+        }
+      }
       for (const content of contents) {
         const issue = validateContent(content, meta.label, meta.key !== 'introduction');
         if (issue) return issue;
@@ -491,9 +498,13 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     const links = content.links || [];
     const images = content.images || [];
     const plainWords = referenceTextWords(links);
-    const globalImages = draft ? countThreadImages(draft.sections) : 0;
     return (
       <div className="rt-nested-content">
+        {statisticCategory && <label className="field rt-stat-level-field">
+          <span>{label}: nilai / tier statistik</span>
+          <input type="text" maxLength={180} value={content.level || ''} placeholder="Large Building Level" aria-label={label + ' level statistik'} onChange={event => updateTargetContent(target, { level: event.target.value })} />
+          <small>Ditampilkan sebagai “{label}: {content.level?.trim() || 'Large Building Level'}” pada halaman publik.</small>
+        </label>}
         <label className="field rt-description-field">
           <span>Deskripsi {label}</span>
           <textarea rows={7} maxLength={500000} value={content.description || ''} placeholder={'Tulis penjelasan untuk ' + label + ' di sini…'} aria-invalid={containsRespectLink(content.description || '')} onChange={event => updateTargetContent(target, { description: event.target.value })} />
@@ -562,7 +573,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                   {renderContentEditor(activeContent, { kind: 'section', key: 'statistic' }, 'catatan statistik umum', true)}
                 </details>
                 <div className="rt-stat-editor">
-                  <div className="rt-evidence-heading"><div><span className="eyebrow">STATISTICS / 04 CATEGORIES</span><h4>Statistik karakter</h4><p>Pilih kategori yang sedang dikerjakan. Setiap kategori menyimpan deskripsi, referensi, dan foto secara terpisah.</p></div></div>
+                  <div className="rt-evidence-heading"><div><span className="eyebrow">STATISTICS / 04 CATEGORIES</span><h4>Statistik karakter</h4><p>Isi level statistik, lalu tambahkan uraian, referensi, dan foto pendukung untuk setiap kategori.</p></div></div>
                   <div className="rt-stat-tabs" role="tablist" aria-label="Kategori statistik" onKeyDown={event => {
                     const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
                       : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
@@ -575,7 +586,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                     document.getElementById('rt-stat-tab-' + nextCategory)?.focus();
                   }}>
                     {statMeta.map((meta, index) => {
-                      const category = activeContent.categories?.[meta.key] || blankContent();
+                      const category = activeContent.categories?.[meta.key] || blankStatContent();
                       const filled = contentIsFilled(category);
                       return <button key={meta.key} id={'rt-stat-tab-' + meta.key} type="button" role="tab" aria-selected={activeStatCategory === meta.key} aria-controls="rt-stat-category-panel" tabIndex={activeStatCategory === meta.key ? 0 : -1} className={activeStatCategory === meta.key ? 'active' : ''} onClick={() => setActiveStatCategory(meta.key)}>
                         <span className="rt-stat-tab-number">{String(index + 1).padStart(2, '0')}</span>
@@ -587,7 +598,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                   <div className="rt-stat-category-panel" id="rt-stat-category-panel" role="tabpanel" aria-labelledby={'rt-stat-tab-' + activeStatCategory}>
                     <div className="rt-stat-category-heading">
                       <div><span className="eyebrow">STATISTIC / {String(statMeta.findIndex(meta => meta.key === activeStatCategory) + 1).padStart(2, '0')}</span><h5>{statMeta.find(meta => meta.key === activeStatCategory)?.label}</h5></div>
-                      <span className="rt-stat-category-note">Deskripsi, referensi, dan foto disimpan khusus untuk kategori ini.</span>
+                      <span className="rt-stat-category-note">Tuliskan nilai/tier terlebih dahulu. Contoh: Attack Potency: Large Building Level.</span>
                     </div>
                     {renderContentEditor(activeContent.categories?.[activeStatCategory] || blankStatContent(), { kind: 'statistic', category: activeStatCategory }, statMeta.find(meta => meta.key === activeStatCategory)?.label || 'statistik', true, activeStatCategory)}
                   </div>

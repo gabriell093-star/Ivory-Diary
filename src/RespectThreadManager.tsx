@@ -480,31 +480,47 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
   };
 
   const save = async () => {
-    if (!draft) return;
+    if (!draft || saving) return;
+    const snapshot = draft;
     const issue = validateDraft();
     if (issue) { setNotice(issue); return; }
+
     setSaving(true);
-    setNotice('');
+    setNotice('Mengirim data dan menunggu konfirmasi penyimpanan dari server…');
     try {
       const values = {
-        slug: draft.slug.trim(),
-        title: draft.title.trim(),
-        character_name: draft.character_name.trim(),
-        universe: draft.universe.trim(),
-        sections: draft.sections,
-        is_published: draft.is_published,
+        slug: snapshot.slug.trim(),
+        title: snapshot.title.trim(),
+        character_name: snapshot.character_name.trim(),
+        universe: snapshot.universe.trim(),
+        sections: snapshot.sections,
+        is_published: snapshot.is_published,
       };
-      if (draft.id) {
-        await adminRequest(token, 'update', { table: 'respect_threads', id: draft.id, values }, 'PATCH');
-      } else {
-        await adminRequest(token, 'create', { table: 'respect_threads', values });
+      const response = snapshot.id
+        ? await adminRequest<{ data?: ThreadRecord }>(token, 'update', { table: 'respect_threads', id: snapshot.id, values }, 'PATCH')
+        : await adminRequest<{ data?: ThreadRecord }>(token, 'create', { table: 'respect_threads', values });
+
+      const savedRecord = response?.data;
+      if (!savedRecord || typeof savedRecord.id !== 'string' ||
+          savedRecord.slug !== values.slug || savedRecord.is_published !== values.is_published) {
+        throw new Error('Server belum mengonfirmasi bahwa Respect Thread tersimpan. Editor tetap dibuka agar data tidak hilang.');
       }
-      await cleanupUploadedMedia();
+
+      // Update the owner list from the record returned by the database instead
+      // of closing the editor and relying on a second request to show the save.
+      setItems(current => [savedRecord, ...current.filter(item => item.id !== savedRecord.id)]);
       setDraft(null);
-      await fetchThreads();
-      setNotice(draft.is_published ? 'Respect Thread berhasil disimpan dan dipublikasikan.' : 'Respect Thread tersimpan sebagai draft pribadi.');
+      setNotice(savedRecord.is_published
+        ? 'Respect Thread berhasil disimpan dan dipublikasikan.'
+        : 'Respect Thread berhasil disimpan sebagai draft pribadi.');
+
+      // Uploaded files are cleaned only after the database confirms the row.
+      // Cleanup failures are retained for a later cleanup attempt and do not
+      // turn a successful database save into a failed save state.
+      await cleanupUploadedMedia();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Respect Thread gagal disimpan.');
+      console.error('Respect Thread save failed:', error);
+      setNotice(error instanceof Error ? error.message : 'Respect Thread gagal disimpan. Periksa koneksi lalu coba lagi.');
     } finally {
       setSaving(false);
     }

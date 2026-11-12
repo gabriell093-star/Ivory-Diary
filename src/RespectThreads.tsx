@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowUpRight, BookOpen, ExternalLink, Image as ImageIcon } f
 import { supabase } from './lib';
 
 type MediaItem = { path: string; url: string };
-type ThreadContent = { description?: string; links?: string[]; link?: string; images?: MediaItem[] };
+type ThreadContent = { description?: string; links?: string[]; link?: string; images?: MediaItem[]; level?: string };
 type EvidenceFeat = ThreadContent & { id?: string };
 type EvidenceEntry = { id?: string; name?: string; feats?: EvidenceFeat[] };
 type ThreadSection = ThreadContent & {
@@ -34,7 +34,7 @@ const sectionMeta = [
   { key: 'terminology', label: 'Terminology', index: '02', hint: 'Istilah khusus dan definisinya.' },
   { key: 'cosmology', label: 'Cosmology', index: '03', hint: 'Struktur dunia dan skalanya.' },
   { key: 'personality', label: 'Personality', index: '04', hint: 'Kepribadian dan karakterisasi.' },
-  { key: 'in_char', label: 'In Char', index: '05', hint: 'Tindakan dan konteks karakter.' },
+  { key: 'in_char', label: 'BIQ', index: '05', hint: 'Battle IQ dan kecerdasan bertarung karakter.' },
   { key: 'statistic', label: 'Statistics', index: '06', hint: 'Attack Potency, Durability, Speed, dan Stamina.' },
   { key: 'resistance', label: 'Resistances', index: '07', hint: 'Jenis resistansi beserta feat pendukungnya.' },
   { key: 'hax_ability', label: 'Hax & Ability', index: '08', hint: 'Kemampuan beserta feat pendukungnya.' },
@@ -55,11 +55,12 @@ const normalizeContent = (content?: ThreadContent | null): ThreadContent => ({
   links: Array.isArray(content?.links) ? content!.links!.filter((item): item is string => typeof item === 'string')
     : (typeof content?.link === 'string' && content.link.trim() ? [content.link] : []),
   images: Array.isArray(content?.images) ? content!.images!.filter(item => item && typeof item.url === 'string') : [],
+  ...(typeof content?.level === 'string' ? { level: content.level } : {}),
 });
 
 const contentIsFilled = (content?: ThreadContent | null) => {
   const normalized = normalizeContent(content);
-  return Boolean(normalized.description.trim() || normalized.links?.some(link => link.trim()) || normalized.images?.length);
+  return Boolean(normalized.description.trim() || normalized.links?.some(link => link.trim()) || normalized.images?.length || normalized.level?.trim());
 };
 
 const sectionIsFilled = (section: ThreadSection | undefined, key: string) => {
@@ -202,7 +203,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
                             <span className="eyebrow">METRIC / {category.index}</span>
                             <span className="rt-stat-public-marker">{category.index}</span>
                           </div>
-                          <h3>{category.label}</h3>
+                          <h3>{category.label}{content?.level?.trim() ? <span className="rt-stat-public-value">: {content.level.trim()}</span> : null}</h3>
                         </header>
                         <PublicContentBlock content={content} threadTitle={thread.title} />
                       </section> : null;

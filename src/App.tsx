@@ -43,7 +43,7 @@ function App(){
  const [loadError,setLoadError]=useState(false);const [menuOpen,setMenuOpen]=useState(false);const [activeCategory,setActiveCategory]=useState('all');
  const [modal,setModal]=useState<'order'|'staff'|'login'|'gallery'|null>(null);const [selectedService,setSelectedService]=useState<Service|null>(null);const [selectedStaff,setSelectedStaff]=useState<Staff|null>(null);const [selectedTestimonial,setSelectedTestimonial]=useState<Testimonial|null>(null);const [galleryIndex,setGalleryIndex]=useState(0);const [touchStart,setTouchStart]=useState<number|null>(null);
  const [quantity,setQuantity]=useState(1);const [tier,setTier]=useState('');const [loginName,setLoginName]=useState('');const [loginPass,setLoginPass]=useState('');const [loginError,setLoginError]=useState('');const [loginBusy,setLoginBusy]=useState(false);
- const [token,setToken]=useState(()=>sessionStorage.getItem('ivory-owner-token')||'');const [owner,setOwner]=useState<Owner|null>(null);const [adminTab,setAdminTab]=useState<AdminTab>('services');const [adminRows,setAdminRows]=useState<Record<string,any>[]>([]);const [editing,setEditing]=useState<Record<string,any>|null>(null);const [jsonDrafts,setJsonDrafts]=useState<Record<string,string>>({});const adminFetchSequence=useRef(0);const pendingAdminMediaRef=useRef<string[]>([]);const [saving,setSaving]=useState(false);const [notice,setNotice]=useState('');const [cropFile,setCropFile]=useState<File|null>(null);const [cropTarget,setCropTarget]=useState<'photo_path'|'image_urls'|null>(null);const [cropBusy,setCropBusy]=useState(false);
+ const [token,setToken]=useState(()=>sessionStorage.getItem('ivory-owner-token')||'');const [owner,setOwner]=useState<Owner|null>(null);const [adminTab,setAdminTab]=useState<AdminTab>('services');const [adminRows,setAdminRows]=useState<Record<string,any>[]>([]);const [editing,setEditing]=useState<Record<string,any>|null>(null);const [jsonDrafts,setJsonDrafts]=useState<Record<string,string>>({});const adminFetchSequence=useRef(0);const pendingAdminMediaRef=useRef<string[]>([]);const cleanupAdminMediaInFlightRef=useRef<Promise<void>|null>(null);const [saving,setSaving]=useState(false);const [notice,setNotice]=useState('');const [cropFile,setCropFile]=useState<File|null>(null);const [cropTarget,setCropTarget]=useState<'photo_path'|'image_urls'|null>(null);const [cropBusy,setCropBusy]=useState(false);
  useEffect(()=>{document.documentElement.dataset.theme=theme},[theme]);
  useEffect(()=>{if(localStorage.getItem('ivory-theme'))return;const media=window.matchMedia('(prefers-color-scheme: dark)');const update=()=>{if(!localStorage.getItem('ivory-theme'))setTheme(media.matches?'dark':'light')};media.addEventListener('change',update);return()=>media.removeEventListener('change',update)},[]);
  const toggleTheme=()=>{const next=theme==='light'?'dark':'light';localStorage.setItem('ivory-theme',next);setTheme(next)};
@@ -154,13 +154,30 @@ function App(){
   return result as {path:string;url:string};
 };
  const cleanupAdminMedia=async()=>{
+  if(cleanupAdminMediaInFlightRef.current){
+   await cleanupAdminMediaInFlightRef.current;
+   return;
+  }
   const paths=[...new Set(pendingAdminMediaRef.current)];
   if(!paths.length)return;
-  try{
-   const result=await adminRequest<{ok?:boolean}>(token,'cleanup-media',{paths});
-   if(result?.ok)pendingAdminMediaRef.current=[];
-  }catch(error){
-   console.warn('Temporary admin media cleanup deferred:',error);
+
+  const cleanupTask=(async()=>{
+   try{
+    const result=await adminRequest<{ok?:boolean;complete?:boolean}>(token,'cleanup-media',{paths});
+    if(result?.ok&&result.complete===true){
+     const completed=new Set(paths);
+     // Keep uploads that arrived after this cleanup request began.
+     pendingAdminMediaRef.current=pendingAdminMediaRef.current.filter(path=>!completed.has(path));
+    }
+   }catch(error){
+    console.warn('Temporary admin media cleanup deferred:',error);
+   }
+  })();
+
+  cleanupAdminMediaInFlightRef.current=cleanupTask;
+  try{await cleanupTask}
+  finally{
+   if(cleanupAdminMediaInFlightRef.current===cleanupTask)cleanupAdminMediaInFlightRef.current=null;
   }
  };
  const cancelAdminEditor=()=>{

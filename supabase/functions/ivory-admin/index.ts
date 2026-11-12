@@ -154,39 +154,76 @@ function storagePathFromPublicUrl(value: unknown): string | null {
   }
 }
 
-async function removeIvoryMedia(paths: unknown[]): Promise<number> {
+type MediaCleanupResult = { removed: number; complete: boolean };
+
+async function readAllMediaReferences(
+  table: "respect_threads" | "staff" | "testimonials",
+  columns: string,
+): Promise<{ rows: Record<string, unknown>[]; complete: boolean }> {
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  const maxRows = 50000;
+
+  // Use deterministic primary-key order and explicit paging so large archives
+  // are not silently truncated at PostgREST's default row limit.
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const { data, error } = await db.from(table)
+      .select(columns)
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      console.error("Ivory media reference read failed:", table, error.message);
+      return { rows: [], complete: false };
+    }
+
+    const batch = (data || []) as Record<string, unknown>[];
+    rows.push(...batch);
+    if (batch.length < pageSize) return { rows, complete: true };
+  }
+
+  // Fail closed if an archive grows beyond the safety scan cap.
+  console.error("Ivory media reference scan reached its safety cap:", table, maxRows);
+  return { rows: [], complete: false };
+}
+
+async function removeIvoryMedia(paths: unknown[]): Promise<MediaCleanupResult> {
   const unique = [...new Set(paths.map(safeStoragePath).filter((value): value is string => Boolean(value)))];
-  if (!unique.length) return 0;
+  if (!unique.length) return { removed: 0, complete: true };
 
   // Never remove an asset while any public record still references it.
   const [threadsResult, staffResult, testimonialsResult] = await Promise.all([
-    db.from("respect_threads").select("sections"),
-    db.from("staff").select("photo_path"),
-    db.from("testimonials").select("image_paths"),
+    readAllMediaReferences("respect_threads", "sections"),
+    readAllMediaReferences("staff", "photo_path"),
+    readAllMediaReferences("testimonials", "image_paths"),
   ]);
-  if (threadsResult.error || staffResult.error || testimonialsResult.error) {
-    console.error("Ivory media reference check failed:", threadsResult.error?.message || staffResult.error?.message || testimonialsResult.error?.message);
-    return 0;
+  if (!threadsResult.complete || !staffResult.complete || !testimonialsResult.complete) {
+    return { removed: 0, complete: false };
   }
 
   const referenced = new Set<string>([
-    ...(threadsResult.data || []).flatMap(row => respectThreadImagePaths(row.sections)),
-    ...(staffResult.data || []).map(row => storagePathFromPublicUrl(row.photo_path)).filter((path): path is string => Boolean(path)),
-    ...(testimonialsResult.data || []).flatMap(row => Array.isArray(row.image_paths)
+    ...threadsResult.rows.flatMap(row => respectThreadImagePaths(row.sections)),
+    ...staffResult.rows.map(row => storagePathFromPublicUrl(row.photo_path)).filter((path): path is string => Boolean(path)),
+    ...testimonialsResult.rows.flatMap(row => Array.isArray(row.image_paths)
       ? row.image_paths.map(safeStoragePath).filter((path): path is string => Boolean(path))
       : []),
   ]);
   const unused = unique.filter(path => !referenced.has(path));
   let removed = 0;
+  let complete = true;
 
   // Keep Storage removal requests small while allowing any number of images.
   for (let index = 0; index < unused.length; index += 100) {
     const batch = unused.slice(index, index + 100);
     const { error } = await db.storage.from("ivory-public").remove(batch);
-    if (error) console.error("Ivory media cleanup failed:", error.message);
-    else removed += batch.length;
+    if (error) {
+      complete = false;
+      console.error("Ivory media cleanup failed:", error.message);
+    } else {
+      removed += batch.length;
+    }
   }
-  return removed;
+  return { removed, complete };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -633,8 +670,8 @@ Deno.serve(async (req: Request) => {
         return respond({ error: "Pembersihan hanya diizinkan untuk foto yang diunggah melalui Ivory Diary." }, 400);
       }
       const candidates = [...new Set(submitted.filter((path): path is string => Boolean(path)))];
-      const removed = await removeIvoryMedia(candidates);
-      return respond({ ok: true, removed });
+      const result = await removeIvoryMedia(candidates);
+      return respond({ ok: true, removed: result.removed, complete: result.complete });
     }
 
     if (action === "upload" && req.method === "POST") {

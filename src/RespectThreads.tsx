@@ -50,7 +50,13 @@ const safeHttpUrl = (value?: string | null) => {
   }
 };
 
-const normalizeContent = (content?: ThreadContent | null): ThreadContent => ({
+type NormalizedThreadContent = Omit<ThreadContent, 'description' | 'links' | 'images'> & {
+  description: string;
+  links: string[];
+  images: MediaItem[];
+};
+
+const normalizeContent = (content?: ThreadContent | null): NormalizedThreadContent => ({
   description: typeof content?.description === 'string' ? content.description : '',
   links: Array.isArray(content?.links) ? content!.links!.filter((item): item is string => typeof item === 'string')
     : (typeof content?.link === 'string' && content.link.trim() ? [content.link] : []),

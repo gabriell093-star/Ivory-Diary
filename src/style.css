@@ -2488,6 +2488,27 @@
   cursor:pointer;
 }
 .rt-feat-list{display:grid;gap:12px;min-width:0}
+.rt-feat-toolbar{
+  position:sticky;
+  top:10px;
+  z-index:8;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+  padding:9px 11px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--surface);
+  box-shadow:0 6px 20px rgba(30,10,12,.09);
+}
+.rt-feat-toolbar>small{
+  color:var(--muted);
+  font-size:8px;
+  line-height:1.5;
+  text-align:right;
+}
 .rt-feat-card{
   display:grid;
   gap:12px;
@@ -2551,6 +2572,9 @@
   padding-top:9px;
 }
 @media(max-width:760px){
+  .rt-feat-toolbar{align-items:flex-start;flex-direction:column}
+  .rt-feat-toolbar>small{text-align:left}
+  .rt-feat-toolbar .rt-add-feat{width:100%}
   .rt-stat-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
   .rt-evidence-heading{align-items:stretch;flex-direction:column}
   .rt-add-evidence{align-self:flex-start}

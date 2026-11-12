@@ -41,9 +41,12 @@ const sectionMeta = [
 ] as const;
 
 const safeHttpUrl = (value?: string | null) => {
-  if (!value || /\s/u.test(value)) return null;
+  if (!value) return null;
+  const numbered = value.trim().match(/^(?:\d{1,4}[.)]|\[\d{1,4}\])\s*(https?:\/\/\S+)$/i);
+  const candidate = numbered?.[1] || value.trim();
+  if (/\s/u.test(candidate)) return null;
   try {
-    const url = new URL(value);
+    const url = new URL(candidate);
     return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
   } catch {
     return null;

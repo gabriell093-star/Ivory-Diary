@@ -80,7 +80,7 @@ const newDraft = (): Draft => ({
 
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const MAX_INTRODUCTION_IMAGES = 1;
-const RESPECT_LINK_PATTERN = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+|(?<![\w@.-])(?:localhost(?::\d+)?(?:\/[^\s<>()]*)?|\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/[^\s<>()]*)?|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>()]*)?))/iu;
+const RESPECT_LINK_PATTERN = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+|(?<![\w@.-])(?=[a-z0-9-]{2,}\.)(?=[a-z0-9-]*[a-z])[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?::\d+)?(?:\/[^\s<>()]*)?|\blocalhost(?::\d+)?(?:\/[^\s<>()]*)?)/iu;
 const words = (value: string) => value.trim() ? value.trim().split(/\s+/u).length : 0;
 const containsRespectLink = (value: string) => RESPECT_LINK_PATTERN.test(value);
 const isValidHttpReference = (value: string) => {
@@ -575,11 +575,11 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
         {allowLinks && <div className="rt-links-field">
           <div className="rt-links-field-heading"><span><Link2 size={13} /> Link & teks referensi</span><small>{links.filter(link => link.trim()).length} item · {plainWords} / 100 kata teks</small></div>
           {links.map((link, index) => <div className="rt-link-item" key={index}>
-            <textarea rows={2} maxLength={10000} value={link} placeholder="https://… atau teks biasa" aria-label={'Referensi ' + (index + 1) + ' ' + label} onChange={event => updateTargetContent(target, { links: links.map((item, itemIndex) => itemIndex === index ? event.target.value : item) })} />
+            <textarea rows={2} maxLength={10000} value={link} placeholder="URL lengkap atau teks biasa (angka/simbol bebas)" aria-label={'Referensi ' + (index + 1) + ' ' + label} onChange={event => updateTargetContent(target, { links: links.map((item, itemIndex) => itemIndex === index ? event.target.value : item) })} />
             <button type="button" className="rt-link-remove" aria-label={'Hapus link ' + (index + 1)} onClick={() => updateTargetContent(target, { links: links.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={14} /></button>
           </div>)}
           <button type="button" className="rt-add-link" onClick={() => updateTargetContent(target, { links: [...links, ''] })}><Plus size={14} /> Tambah link</button>
-          <small>Jumlah URL tidak dibatasi. Teks biasa maksimal 100 kata untuk area ini. Link dapat ditambahkan sebelum deskripsi; kelengkapan diperiksa saat menyimpan.</small>
+          <small>URL harus berupa tautan lengkap berawalan http:// atau https://, satu URL per item. Teks biasa maksimal 100 kata; angka, desimal, nomor urut, tanda plus/minus, dan simbol tetap diperbolehkan. Teks link dapat ditambahkan sebelum deskripsi.</small>
         </div>}
         <div className="rt-media-field">
           <div className="rt-media-field-heading">
@@ -698,6 +698,10 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                         </div>
                       </header>
                       <div className="rt-feat-list">
+                        <div className="rt-feat-toolbar">
+                          <button type="button" className="rt-add-feat" onClick={() => addFeat(evidenceKey, entry.id)}><Plus size={14} /> Tambah feat pendukung</button>
+                          <small>{entry.feats.length} feat · tombol tetap tersedia saat menggulir</small>
+                        </div>
                         {entry.feats.length === 0 && <div className="rt-feat-empty">Belum ada feat. Tambahkan bukti pertama untuk entri ini.</div>}
                         {entry.feats.map((feat, featIndex) => <article className="rt-feat-card" key={feat.id}>
                           <header className="rt-feat-heading"><div><span className="eyebrow">FEAT / {String(featIndex + 1).padStart(2, '0')}</span><p>Bukti pendukung untuk {entry.name.trim() || (activeSection === 'resistance' ? 'Resistance ini' : 'Ability ini')}.</p></div><button type="button" className="rt-feat-remove" aria-label="Hapus feat" onClick={() => removeFeat(evidenceKey, entry.id, feat.id)}><Trash2 size={13} /> Hapus feat</button></header>
@@ -710,7 +714,6 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                             'Jelaskan konteks kejadian, kemampuan yang ditunjukkan, dampaknya, dan hubungan bukti ini dengan ' + (entry.name.trim() || 'entri') + '.',
                           )}
                         </article>)}
-                        <button type="button" className="rt-add-feat" onClick={() => addFeat(evidenceKey, entry.id)}><Plus size={14} /> Tambah feat pendukung</button>
                       </div>
                     </article>)}
                   </div>}

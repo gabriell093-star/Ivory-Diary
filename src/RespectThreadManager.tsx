@@ -84,9 +84,11 @@ const RESPECT_LINK_PATTERN = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<
 const words = (value: string) => value.trim() ? value.trim().split(/\s+/u).length : 0;
 const containsRespectLink = (value: string) => RESPECT_LINK_PATTERN.test(value);
 const isValidHttpReference = (value: string) => {
-  if (!/^https?:\/\//i.test(value) || /\s/u.test(value)) return false;
+  const numbered = value.trim().match(/^(?:\d{1,4}[.)]|\[\d{1,4}\])\s*(https?:\/\/\S+)$/i);
+  const candidate = numbered?.[1] || value.trim();
+  if (!/^https?:\/\//i.test(candidate) || /\s/u.test(candidate)) return false;
   try {
-    const parsed = new URL(value);
+    const parsed = new URL(candidate);
     return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && Boolean(parsed.hostname);
   } catch {
     return false;
@@ -579,7 +581,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
             <button type="button" className="rt-link-remove" aria-label={'Hapus link ' + (index + 1)} onClick={() => updateTargetContent(target, { links: links.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={14} /></button>
           </div>)}
           <button type="button" className="rt-add-link" onClick={() => updateTargetContent(target, { links: [...links, ''] })}><Plus size={14} /> Tambah link</button>
-          <small>URL harus berupa tautan lengkap berawalan http:// atau https://, satu URL per item. Teks biasa maksimal 100 kata; angka, desimal, nomor urut, tanda plus/minus, dan simbol tetap diperbolehkan. Teks link dapat ditambahkan sebelum deskripsi.</small>
+          <small>URL harus lengkap dengan http:// atau https://, satu URL per item (boleh diawali nomor seperti “1. https://…”). Teks biasa maksimal 100 kata; angka, desimal, nomor urut, tanda plus/minus, dan simbol tetap diperbolehkan.</small>
         </div>}
         <div className="rt-media-field">
           <div className="rt-media-field-heading">

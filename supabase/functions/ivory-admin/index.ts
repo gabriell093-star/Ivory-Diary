@@ -251,9 +251,11 @@ function containsRespectLink(value: string): boolean {
 }
 
 function isValidHttpReference(value: string): boolean {
-  if (!/^https?:\/\//i.test(value) || /\s/u.test(value)) return false;
+  const numbered = value.trim().match(/^(?:\d{1,4}[.)]|\[\d{1,4}\])\s*(https?:\/\/\S+)$/i);
+  const candidate = numbered?.[1] || value.trim();
+  if (!/^https?:\/\//i.test(candidate) || /\s/u.test(candidate)) return false;
   try {
-    const parsed = new URL(value);
+    const parsed = new URL(candidate);
     return (parsed.protocol === "https:" || parsed.protocol === "http:") && Boolean(parsed.hostname);
   } catch {
     return false;

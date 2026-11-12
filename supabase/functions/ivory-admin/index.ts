@@ -628,7 +628,7 @@ Deno.serve(async (req: Request) => {
       }
       const submitted = body.paths.map(safeStoragePath);
       const generatedUploadPath = (path: string | null): path is string => Boolean(path) &&
-        /^(?:respect-threads\\/)?\\d{13}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[A-Za-z0-9._-]{1,100}$/i.test(path);
+        /^(?:respect-threads\/)?\d{13}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[A-Za-z0-9._-]{1,100}$/i.test(path);
       if (submitted.some(path => !generatedUploadPath(path))) {
         return respond({ error: "Pembersihan hanya diizinkan untuk foto yang diunggah melalui Ivory Diary." }, 400);
       }

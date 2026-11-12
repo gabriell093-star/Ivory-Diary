@@ -86,12 +86,12 @@ function PublicContentBlock({ content, title, threadTitle }: { content?: ThreadC
   const normalized = normalizeContent(content);
   const references = (normalized.links || []).map(reference => reference.trim()).filter(Boolean);
   const images = normalized.images || [];
-  if (!normalized.description?.trim() && references.length === 0 && images.length === 0) return null;
+  if (!normalized.description?.trim() && references.length === 0 && images.length === 0 && !normalized.level?.trim()) return null;
 
   return (
     <div className="rt-public-content-block">
       {title && <h4 className="rt-public-content-title">{title}</h4>}
-      {normalized.description?.trim() && <div className="rt-section-copy">{normalized.description.split(/\n{2,}/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
+      {normalized.description?.trim() && <div className="rt-section-copy rt-description-body">{normalized.description.split(/\n{2,}/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
       {references.length > 0 && <div className="rt-source-links">{references.map((reference, index) => {
         const url = safeHttpUrl(reference);
         return url
@@ -193,7 +193,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
                 <div className="rt-section-heading"><span>{meta.index}</span><div><p className="eyebrow">RESPECT THREAD / SECTION {meta.index}</p><h2>{meta.label}</h2></div></div>
 
                 {meta.key === 'statistic' ? <>
-                  {contentIsFilled(section) && <div className="rt-stat-overview"><PublicContentBlock content={section} title="Statistical overview" threadTitle={thread.title} /></div>}
+                  {contentIsFilled(section) && <div className="rt-stat-overview"><PublicContentBlock content={section} title="Ringkasan statistik" threadTitle={thread.title} /></div>}
                   <div className="rt-stat-public-list" aria-label="Empat kategori statistik">
                     {statMeta.map(category => {
                       const content = section.categories?.[category.key];
@@ -205,12 +205,12 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
                           </div>
                           <h3>{category.label}{content?.level?.trim() ? <span className="rt-stat-public-value">: {content.level.trim()}</span> : null}</h3>
                         </header>
-                        <PublicContentBlock content={content} threadTitle={thread.title} />
+                        <PublicContentBlock content={content} title="Penjelasan statistik" threadTitle={thread.title} />
                       </section> : null;
                     })}
                   </div>
                 </> : meta.key === 'resistance' || meta.key === 'hax_ability' ? <>
-                  {contentIsFilled(section) && <div className="rt-evidence-general-notes"><PublicContentBlock content={section} title="General notes" threadTitle={thread.title} /></div>}
+                  {contentIsFilled(section) && <div className="rt-evidence-general-notes"><PublicContentBlock content={section} title="Catatan umum" threadTitle={thread.title} /></div>}
                   <div className="rt-evidence-public-list">
                     {(section.entries || []).map((entry, entryIndex) => <article className="rt-evidence-public-card" key={entry.id || entryIndex}>
                       <header className="rt-evidence-public-heading">
@@ -227,7 +227,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
                             <span className="rt-public-feat-index">FEAT / {String(featIndex + 1).padStart(2, '0')}</span>
                             <span className="rt-public-feat-label">SUPPORTING EVIDENCE</span>
                           </div>
-                          <PublicContentBlock content={feat} threadTitle={thread.title} />
+                          <PublicContentBlock content={feat} title="Penjelasan feat" threadTitle={thread.title} />
                         </article>)}
                       </div>
                     </article>)}

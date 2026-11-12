@@ -4,7 +4,7 @@ import ImageCropper from './ImageCropper';
 import { ADMIN_URL, PUBLIC_SUPABASE_KEY, adminRequest } from './lib';
 
 type MediaItem = { path: string; url: string };
-type ThreadContent = { description: string; links: string[]; images: MediaItem[] };
+type ThreadContent = { description: string; links: string[]; images: MediaItem[]; level?: string };
 type StatKey = 'attack_potency' | 'durability' | 'speed' | 'stamina';
 type EvidenceFeat = ThreadContent & { id: string };
 type EvidenceEntry = { id: string; name: string; feats: EvidenceFeat[] };
@@ -39,23 +39,24 @@ const statMeta: { key: StatKey; label: string }[] = [
   { key: 'stamina', label: 'Stamina' },
 ];
 
-const sectionMeta: { key: SectionKey; label: string; hint: string; imageLimit: number; maxWords: number }[] = [
-  { key: 'introduction', label: 'Introduction', hint: 'Pengenalan karakter dan konteks. Maksimal 2.000 kata.', imageLimit: 1, maxWords: 2000 },
-  { key: 'terminology', label: 'Terminology', hint: 'Uraian istilah, konsep, atau penamaan khusus. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
-  { key: 'cosmology', label: 'Cosmology', hint: 'Penjelasan struktur dunia, alam, dimensi, atau kosmologi. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
-  { key: 'personality', label: 'Personality', hint: 'Uraian karakterisasi dan kepribadian. Maksimal 15.000 kata.', imageLimit: 0, maxWords: 15000 },
-  { key: 'in_char', label: 'In Char', hint: 'Penjelasan tindakan, pernyataan, atau konteks karakter dalam karakterisasi aslinya. Maksimal 15.000 kata.', imageLimit: 10, maxWords: 15000 },
-  { key: 'statistic', label: 'Statistics', hint: 'Statistik dipisahkan menjadi Attack Potency, Durability, Speed, dan Stamina. Maksimal 15.000 kata untuk seluruh bagian.', imageLimit: 10, maxWords: 15000 },
-  { key: 'resistance', label: 'Resistances', hint: 'Tambahkan setiap jenis resistansi sebagai entri terpisah, lalu lampirkan feat pendukungnya.', imageLimit: 10, maxWords: 15000 },
-  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Tambahkan setiap kemampuan sebagai entri terpisah, lalu lampirkan feat pendukungnya.', imageLimit: 10, maxWords: 15000 },
+const sectionMeta: { key: SectionKey; label: string; hint: string; maxWords: number }[] = [
+  { key: 'introduction', label: 'Introduction', hint: 'Pengenalan karakter dan konteks. Maksimal 2.000 kata.', maxWords: 2000 },
+  { key: 'terminology', label: 'Terminology', hint: 'Uraian istilah, konsep, atau penamaan khusus. Maksimal 15.000 kata.', maxWords: 15000 },
+  { key: 'cosmology', label: 'Cosmology', hint: 'Penjelasan struktur dunia, alam, dimensi, atau kosmologi. Maksimal 15.000 kata.', maxWords: 15000 },
+  { key: 'personality', label: 'Personality', hint: 'Uraian karakterisasi dan kepribadian. Maksimal 15.000 kata.', maxWords: 15000 },
+  { key: 'in_char', label: 'BIQ', hint: 'Penjelasan tindakan, pernyataan, atau konteks karakter dalam karakterisasi aslinya. Maksimal 15.000 kata.', maxWords: 15000 },
+  { key: 'statistic', label: 'Statistics', hint: 'Statistik dipisahkan menjadi Attack Potency, Durability, Speed, dan Stamina. Maksimal 15.000 kata untuk seluruh bagian.', maxWords: 15000 },
+  { key: 'resistance', label: 'Resistances', hint: 'Tambahkan setiap jenis resistansi sebagai entri terpisah, lalu lampirkan feat pendukungnya.', maxWords: 15000 },
+  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Tambahkan setiap kemampuan sebagai entri terpisah, lalu lampirkan feat pendukungnya.', maxWords: 15000 },
 ];
 
 const blankContent = (): ThreadContent => ({ description: '', links: [], images: [] });
+const blankStatContent = (): ThreadContent => ({ ...blankContent(), level: '' });
 const blankCategories = (): Record<StatKey, ThreadContent> => ({
-  attack_potency: blankContent(),
-  durability: blankContent(),
-  speed: blankContent(),
-  stamina: blankContent(),
+  attack_potency: blankStatContent(),
+  durability: blankStatContent(),
+  speed: blankStatContent(),
+  stamina: blankStatContent(),
 });
 const blankSections = (): ThreadSections => ({
   introduction: blankContent(),
@@ -77,7 +78,6 @@ const newDraft = (): Draft => ({
   is_published: true,
 });
 
-const MAX_THREAD_IMAGES = 10;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 const RESPECT_LINK_PATTERN = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+|(?<![\w@.-])(?:localhost(?::\d+)?(?:\/[^\s<>()]*)?|\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/[^\s<>()]*)?|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>()]*)?))/iu;
 const words = (value: string) => value.trim() ? value.trim().split(/\s+/u).length : 0;
@@ -125,10 +125,10 @@ const normalizeSections = (value: unknown): ThreadSections => {
     if (meta.key === 'statistic') {
       const categories = section.categories && typeof section.categories === 'object' ? section.categories : {};
       fallback.statistic.categories = {
-        attack_potency: normalizeContent(categories.attack_potency),
-        durability: normalizeContent(categories.durability),
-        speed: normalizeContent(categories.speed),
-        stamina: normalizeContent(categories.stamina),
+        attack_potency: { ...normalizeContent(categories.attack_potency), level: typeof categories.attack_potency?.level === 'string' ? categories.attack_potency.level : '' },
+        durability: { ...normalizeContent(categories.durability), level: typeof categories.durability?.level === 'string' ? categories.durability.level : '' },
+        speed: { ...normalizeContent(categories.speed), level: typeof categories.speed?.level === 'string' ? categories.speed.level : '' },
+        stamina: { ...normalizeContent(categories.stamina), level: typeof categories.stamina?.level === 'string' ? categories.stamina.level : '' },
       };
     }
     if (meta.key === 'resistance' || meta.key === 'hax_ability') {
@@ -148,7 +148,7 @@ const normalizeSections = (value: unknown): ThreadSections => {
 };
 
 const contentIsFilled = (content?: ThreadContent | null) => Boolean(
-  content && (content.description.trim() || content.links.some(link => link.trim()) || content.images.length),
+  content && (content.description.trim() || content.links.some(link => link.trim()) || content.images.length || content.level?.trim()),
 );
 const sectionContents = (section: ThreadSection, key: SectionKey): ThreadContent[] => {
   const contents: ThreadContent[] = [section];
@@ -160,7 +160,7 @@ const sectionContents = (section: ThreadSection, key: SectionKey): ThreadContent
   }
   return contents;
 };
-const sectionWordCount = (section: ThreadSection, key: SectionKey) => sectionContents(section, key).reduce((sum, content) => sum + words(content.description), 0);
+const sectionWordCount = (section: ThreadSection, key: SectionKey) => sectionContents(section, key).reduce((sum, content) => sum + words(content.description) + words(content.level || ''), 0);
 const totalWords = (sections: ThreadSections) => sectionMeta.reduce((sum, meta) => sum + sectionWordCount(sections[meta.key], meta.key), 0);
 const countThreadImages = (sections: ThreadSections) => sectionMeta.reduce((sum, meta) => (
   sum + sectionContents(sections[meta.key], meta.key).reduce((count, content) => count + content.images.length, 0)
@@ -269,7 +269,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
   const getTargetContent = (currentDraft: Draft | null, target: UploadTarget): ThreadContent => {
     if (!currentDraft) return blankContent();
     if (target.kind === 'section') return currentDraft.sections[target.key];
-    if (target.kind === 'statistic') return currentDraft.sections.statistic.categories?.[target.category] || blankContent();
+    if (target.kind === 'statistic') return currentDraft.sections.statistic.categories?.[target.category] || blankStatContent();
     const entry = (currentDraft.sections[target.section].entries || []).find(item => item.id === target.entryId);
     return entry?.feats.find(feat => feat.id === target.featId) || blankContent();
   };
@@ -287,7 +287,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
           categories: {
             ...blankCategories(),
             ...(statistic.categories || {}),
-            [target.category]: { ...(statistic.categories?.[target.category] || blankContent()), ...patch },
+            [target.category]: { ...(statistic.categories?.[target.category] || blankStatContent()), ...patch },
           },
         };
       } else {

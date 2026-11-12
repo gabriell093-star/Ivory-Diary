@@ -79,6 +79,7 @@ const newDraft = (): Draft => ({
 });
 
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_INTRODUCTION_IMAGES = 1;
 const RESPECT_LINK_PATTERN = /(?:\b[a-z][a-z0-9+.-]*:\/\/[^\s<>()]+|\bwww\.[^\s<>()]+|(?<![\w@.-])(?:localhost(?::\d+)?(?:\/[^\s<>()]*)?|\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:\/[^\s<>()]*)?|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>()]*)?))/iu;
 const words = (value: string) => value.trim() ? value.trim().split(/\s+/u).length : 0;
 const containsRespectLink = (value: string) => RESPECT_LINK_PATTERN.test(value);
@@ -257,14 +258,21 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     setNotice('');
   };
 
-  const updateSection = (key: SectionKey, patch: Partial<ThreadSection>) => {
-    setDraft(current => current ? ({
-      ...current,
-      sections: {
-        ...current.sections,
-        [key]: { ...current.sections[key], ...patch },
-      },
-    }) : current);
+  const updateEvidenceEntries = (
+    key: EvidenceSectionKey,
+    updater: (entries: EvidenceEntry[]) => EvidenceEntry[],
+  ) => {
+    setDraft(current => {
+      if (!current) return current;
+      const section = current.sections[key];
+      return {
+        ...current,
+        sections: {
+          ...current.sections,
+          [key]: { ...section, entries: updater(section.entries || []) },
+        },
+      };
+    });
   };
 
   const getTargetContent = (currentDraft: Draft | null, target: UploadTarget): ThreadContent => {
@@ -306,31 +314,33 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
   };
 
   const addEvidenceEntry = (key: EvidenceSectionKey) => {
-    const section = draft?.sections[key];
-    updateSection(key, { entries: [...(section?.entries || []), { id: makeId(), name: '', feats: [] }] });
+    const entry: EvidenceEntry = { id: makeId(), name: '', feats: [] };
+    updateEvidenceEntries(key, entries => [...entries, entry]);
   };
+
   const updateEvidenceEntry = (key: EvidenceSectionKey, entryId: string, patch: Partial<EvidenceEntry>) => {
-    const entries = draft?.sections[key].entries || [];
-    updateSection(key, { entries: entries.map(entry => entry.id === entryId ? { ...entry, ...patch } : entry) });
+    updateEvidenceEntries(key, entries => entries.map(entry => (
+      entry.id === entryId ? { ...entry, ...patch } : entry
+    )));
   };
+
   const removeEvidenceEntry = (key: EvidenceSectionKey, entryId: string) => {
-    const entries = draft?.sections[key].entries || [];
-    updateSection(key, { entries: entries.filter(entry => entry.id !== entryId) });
+    updateEvidenceEntries(key, entries => entries.filter(entry => entry.id !== entryId));
   };
+
   const addFeat = (key: EvidenceSectionKey, entryId: string) => {
-    const entries = draft?.sections[key].entries || [];
-    updateSection(key, {
-      entries: entries.map(entry => entry.id === entryId ? ({
-        ...entry,
-        feats: [...entry.feats, { ...blankContent(), id: makeId() }],
-      }) : entry),
-    });
+    const feat: EvidenceFeat = { ...blankContent(), id: makeId() };
+    updateEvidenceEntries(key, entries => entries.map(entry => (
+      entry.id === entryId ? { ...entry, feats: [...entry.feats, feat] } : entry
+    )));
   };
+
   const removeFeat = (key: EvidenceSectionKey, entryId: string, featId: string) => {
-    const entries = draft?.sections[key].entries || [];
-    updateSection(key, {
-      entries: entries.map(entry => entry.id === entryId ? ({ ...entry, feats: entry.feats.filter(feat => feat.id !== featId) }) : entry),
-    });
+    updateEvidenceEntries(key, entries => entries.map(entry => (
+      entry.id === entryId
+        ? { ...entry, feats: entry.feats.filter(feat => feat.id !== featId) }
+        : entry
+    )));
   };
 
   const chooseImage = (event: ChangeEvent<HTMLInputElement>, target: UploadTarget) => {
@@ -345,6 +355,11 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       setNotice('Setiap foto Respect Thread maksimal 3 MB. Pilih file yang lebih kecil.');
       return;
     }
+    if (target.kind === 'section' && target.key === 'introduction' &&
+        getTargetContent(draft, target).images.length >= MAX_INTRODUCTION_IMAGES) {
+      setNotice('Introduction hanya dapat memiliki 1 foto. Hapus foto yang ada sebelum menggantinya.');
+      return;
+    }
     setNotice('');
     setCropTarget(target);
     setCropFile(file);
@@ -352,6 +367,11 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
 
   const uploadCroppedImage = async (file: File) => {
     if (!draft || !cropTarget) throw new Error('Tujuan foto Respect Thread tidak ditemukan.');
+    const currentContent = getTargetContent(draft, cropTarget);
+    if (cropTarget.kind === 'section' && cropTarget.key === 'introduction' &&
+        currentContent.images.length >= MAX_INTRODUCTION_IMAGES) {
+      throw new Error('Introduction hanya dapat memiliki 1 foto. Hapus foto yang ada sebelum menggantinya.');
+    }
     if (file.type !== 'image/jpeg') throw new Error('Foto harus berupa hasil crop JPEG.');
     if (file.size > MAX_IMAGE_BYTES) throw new Error('Setiap foto Respect Thread maksimal 3 MB.');
 
@@ -420,6 +440,9 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       const contents = sectionContents(section, meta.key);
       const sectionWords = sectionWordCount(section, meta.key);
       if (sectionWords > meta.maxWords) return 'Bagian ' + meta.label + ' maksimal ' + meta.maxWords.toLocaleString('id-ID') + ' kata.';
+      if (meta.key === 'introduction' && (section.images || []).length > MAX_INTRODUCTION_IMAGES) {
+        return 'Introduction hanya dapat memiliki maksimal 1 foto. Hapus foto tambahan sebelum menyimpan.';
+      }
       if (meta.key === 'statistic') {
         for (const statistic of statMeta) {
           const level = section.categories?.[statistic.key]?.level || '';
@@ -494,10 +517,25 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     }
   };
 
-  const renderContentEditor = (content: ThreadContent, target: UploadTarget, label: string, allowLinks: boolean, statisticCategory?: StatKey) => {
+  const renderContentEditor = (
+    content: ThreadContent,
+    target: UploadTarget,
+    label: string,
+    allowLinks: boolean,
+    statisticCategory?: StatKey,
+    descriptionHint?: string,
+  ) => {
     const links = content.links || [];
     const images = content.images || [];
     const plainWords = referenceTextWords(links);
+    const isIntroduction = target.kind === 'section' && target.key === 'introduction';
+    const introductionLimitReached = isIntroduction && images.length >= MAX_INTRODUCTION_IMAGES;
+    const photoCountLabel = isIntroduction
+      ? images.length + ' / ' + MAX_INTRODUCTION_IMAGES + ' foto · batas khusus Introduction'
+      : images.length + ' foto di area ini · tanpa batas jumlah · maks. 3 MB/foto';
+    const guidance = descriptionHint || (statisticCategory
+      ? 'Cantumkan dasar penilaian, feat yang relevan, kondisi saat ditampilkan, serta alasan level tersebut sesuai.'
+      : 'Susun penjelasan secara runtut: konteks, hal yang ditunjukkan, lalu kesimpulan atau relevansinya.');
     return (
       <div className="rt-nested-content">
         {statisticCategory && <label className="field rt-stat-level-field">
@@ -506,8 +544,9 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
           <small>Ditampilkan sebagai “{label}: {content.level?.trim() || 'Large Building Level'}” pada halaman publik.</small>
         </label>}
         <label className="field rt-description-field">
-          <span>Deskripsi {label}</span>
-          <textarea rows={7} maxLength={500000} value={content.description || ''} placeholder={'Tulis penjelasan untuk ' + label + ' di sini…'} aria-invalid={containsRespectLink(content.description || '')} onChange={event => updateTargetContent(target, { description: event.target.value })} />
+          <span>Penjelasan {label}</span>
+          <textarea rows={7} maxLength={500000} value={content.description || ''} placeholder={'Jelaskan ' + label + ' secara runtut…'} aria-label={'Penjelasan ' + label} aria-invalid={containsRespectLink(content.description || '')} onChange={event => updateTargetContent(target, { description: event.target.value })} />
+          <small className="rt-description-guidance">{guidance}</small>
           {containsRespectLink(content.description || '') && <small className="rt-validation-error" role="alert">Deskripsi tidak boleh berisi URL/tautan. Pindahkan URL ke bagian Link & teks referensi.</small>}
         </label>
         {allowLinks && <div className="rt-links-field">
@@ -520,8 +559,17 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
           <small>Jumlah URL tidak dibatasi. Teks biasa maksimal 100 kata untuk area ini. Link dapat ditambahkan sebelum deskripsi; kelengkapan diperiksa saat menyimpan.</small>
         </div>}
         <div className="rt-media-field">
-          <div className="rt-media-field-heading"><div><span><ImagePlus size={14} /> Foto pendukung</span><small>{images.length} foto di area ini · tanpa batas jumlah · maks. 3 MB/foto</small></div><label className={!cropBusy ? 'rt-upload-button' : 'rt-upload-button disabled'}><Plus size={14} /> Tambah foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={cropBusy} onChange={event => chooseImage(event, target)} /></label></div>
-          <p className="rt-media-hint">Video tidak didukung. Semua foto wajib melewati cropper sebelum diunggah. Foto dapat ditambahkan lebih dulu; deskripsi diperiksa saat konfirmasi simpan.</p>
+          <div className="rt-media-field-heading">
+            <div><span><ImagePlus size={14} /> Foto pendukung</span><small>{photoCountLabel}</small></div>
+            <label className={!cropBusy && !introductionLimitReached ? 'rt-upload-button' : 'rt-upload-button disabled'}>
+              {introductionLimitReached ? <Check size={14} /> : <Plus size={14} />}
+              {introductionLimitReached ? 'Batas foto tercapai' : 'Tambah foto'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={cropBusy || Boolean(introductionLimitReached)} onChange={event => chooseImage(event, target)} />
+            </label>
+          </div>
+          <p className="rt-media-hint">{isIntroduction
+            ? 'Introduction dibatasi satu foto. Untuk mengganti, hapus foto yang ada terlebih dahulu. Foto tetap wajib melewati cropper dan maksimal 3 MB.'
+            : 'Tidak ada batas jumlah foto untuk bagian ini. Setiap foto wajib melewati cropper dan maksimal 3 MB; video tidak didukung.'}</p>
           {images.length > 0 && <div className="rt-upload-preview">{images.map((image, index) => <figure key={image.path}><img src={image.url} alt={'Foto ' + (index + 1) + ' ' + label} /><button type="button" aria-label={'Hapus foto ' + (index + 1)} onClick={() => removeImage(target, index)}><Trash2 size={13} /></button><figcaption>FOTO {String(index + 1).padStart(2, '0')}</figcaption></figure>)}</div>}
         </div>
       </div>
@@ -629,7 +677,14 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                         {entry.feats.length === 0 && <div className="rt-feat-empty">Belum ada feat. Tambahkan bukti pertama untuk entri ini.</div>}
                         {entry.feats.map((feat, featIndex) => <article className="rt-feat-card" key={feat.id}>
                           <header className="rt-feat-heading"><div><span className="eyebrow">FEAT / {String(featIndex + 1).padStart(2, '0')}</span><p>Bukti pendukung untuk {entry.name.trim() || (activeSection === 'resistance' ? 'Resistance ini' : 'Ability ini')}.</p></div><button type="button" className="rt-feat-remove" aria-label="Hapus feat" onClick={() => removeFeat(evidenceKey, entry.id, feat.id)}><Trash2 size={13} /> Hapus feat</button></header>
-                          {renderContentEditor(feat, { kind: 'feat', section: evidenceKey, entryId: entry.id, featId: feat.id }, 'feat', true)}
+                          {renderContentEditor(
+                            feat,
+                            { kind: 'feat', section: evidenceKey, entryId: entry.id, featId: feat.id },
+                            'Feat ' + String(featIndex + 1).padStart(2, '0'),
+                            true,
+                            undefined,
+                            'Jelaskan konteks kejadian, kemampuan yang ditunjukkan, dampaknya, dan hubungan bukti ini dengan ' + (entry.name.trim() || 'entri') + '.',
+                          )}
                         </article>)}
                         <button type="button" className="rt-add-feat" onClick={() => addFeat(evidenceKey, entry.id)}><Plus size={14} /> Tambah feat pendukung</button>
                       </div>

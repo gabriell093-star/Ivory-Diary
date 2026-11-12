@@ -3145,3 +3145,246 @@
   }
   .rt-stat-tabs button .rt-stat-tab-number{width:24px;height:24px;font-size:9px}
 }
+
+
+/* Respect Thread — clearer writing and evidence hierarchy */
+.rt-manager .rt-description-field{
+  display:grid;
+  gap:8px;
+  min-width:0;
+}
+.rt-manager .rt-description-field textarea{
+  width:100%;
+  min-width:0;
+  min-height:185px;
+  padding:13px 14px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--surface);
+  color:var(--ink);
+  font:inherit;
+  font-size:12px;
+  line-height:1.85;
+  resize:vertical;
+}
+.rt-manager .rt-description-field textarea:focus{
+  outline:2px solid rgba(128,14,19,.15);
+  outline-offset:1px;
+  border-color:rgba(128,14,19,.42);
+}
+.rt-description-guidance{
+  display:block;
+  margin:0!important;
+  color:var(--muted);
+  font-size:9px!important;
+  line-height:1.65!important;
+}
+.rt-manager .rt-stat-tabs{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+}
+.rt-manager .rt-stat-tabs button{
+  min-height:76px;
+  grid-template-columns:36px minmax(0,1fr);
+  grid-template-rows:auto auto;
+  grid-template-areas:"index title" "index status";
+  column-gap:10px;
+  row-gap:5px;
+  padding:11px 13px;
+  border-radius:10px;
+  white-space:normal;
+}
+.rt-manager .rt-stat-tabs button .rt-stat-tab-number{
+  grid-area:index;
+  grid-row:auto;
+  justify-self:center;
+  align-self:center;
+}
+.rt-manager .rt-stat-tabs button>b{
+  grid-area:title;
+  min-width:0;
+  overflow:visible;
+  font-size:10px;
+  line-height:1.35;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.rt-manager .rt-stat-tabs button>small{
+  grid-area:status;
+  justify-self:start;
+  min-width:0;
+  line-height:1.35;
+  white-space:normal;
+}
+.rt-manager .rt-stat-category-panel{
+  padding:clamp(14px,2.5vw,22px);
+  border-radius:11px;
+  background:var(--surface);
+}
+.rt-manager .rt-stat-category-heading{
+  align-items:flex-start;
+}
+.rt-manager .rt-stat-category-note{
+  max-width:300px;
+  text-align:right;
+}
+.rt-manager .rt-evidence-heading{
+  align-items:flex-start;
+}
+.rt-manager .rt-evidence-heading-actions{
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.rt-manager .rt-evidence-entry{
+  gap:16px;
+  padding:clamp(13px,2.3vw,19px);
+  border-left:3px solid rgba(128,14,19,.45);
+  background:var(--surface);
+}
+.rt-manager .rt-evidence-entry-heading{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:14px;
+}
+.rt-manager .rt-evidence-entry-main{
+  min-width:0;
+}
+.rt-manager .rt-evidence-entry-fields{
+  min-width:0;
+}
+.rt-manager .rt-evidence-entry-actions{
+  flex-wrap:wrap;
+}
+.rt-manager .rt-feat-list{
+  gap:12px;
+}
+.rt-manager .rt-feat-card{
+  min-width:0;
+  padding:clamp(12px,2vw,17px);
+  border-radius:10px;
+  background:var(--bg-soft);
+}
+.rt-manager .rt-feat-heading{
+  align-items:flex-start;
+  padding-bottom:12px;
+}
+.rt-manager .rt-feat-heading p{
+  display:block;
+  max-width:560px;
+  font-size:9px;
+  line-height:1.65;
+}
+.rt-manager .rt-add-feat{
+  min-height:39px;
+  padding-inline:14px;
+}
+.rt-manager .rt-media-field-heading{
+  align-items:flex-start;
+  gap:12px;
+}
+.rt-manager .rt-media-field-heading>div{
+  min-width:0;
+}
+.rt-manager .rt-media-field-heading>div>small{
+  display:block;
+  margin-top:5px;
+  line-height:1.5;
+}
+.rt-manager .rt-upload-button.disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+.rt-manager .rt-upload-button.disabled input{
+  cursor:not-allowed;
+}
+.rt-stat-public-list{
+  grid-template-columns:minmax(0,1fr);
+  gap:16px;
+}
+.rt-stat-public-card{
+  padding:clamp(18px,2.4vw,27px);
+}
+.rt-stat-public-card .rt-description-body,
+.rt-evidence-public-card .rt-description-body,
+.rt-public-feat-card .rt-description-body{
+  max-width:78ch;
+  color:var(--ink);
+  font-size:13px;
+  line-height:1.95;
+  overflow-wrap:anywhere;
+}
+.rt-description-body p{
+  margin:0 0 14px;
+  white-space:pre-wrap;
+}
+.rt-description-body p:last-child{
+  margin-bottom:0;
+}
+.rt-stat-public-card .rt-public-content-title,
+.rt-evidence-public-card .rt-public-content-title,
+.rt-public-feat-card .rt-public-content-title{
+  margin:0 0 9px;
+  color:var(--red);
+  font-size:8px;
+  letter-spacing:.15em;
+}
+.rt-evidence-public-card{
+  padding:clamp(18px,2.7vw,28px);
+}
+.rt-public-feat-card{
+  padding:clamp(14px,2vw,19px);
+}
+.rt-public-feat-card .rt-description-body{
+  padding-top:2px;
+}
+@media(max-width:900px){
+  .rt-manager .rt-stat-tabs{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .rt-manager .rt-stat-category-heading{
+    flex-direction:column;
+  }
+  .rt-manager .rt-stat-category-note{
+    max-width:none;
+    text-align:left;
+  }
+}
+@media(max-width:640px){
+  .rt-manager .rt-stat-tabs{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:7px;
+  }
+  .rt-manager .rt-stat-tabs button{
+    min-height:69px;
+    grid-template-columns:29px minmax(0,1fr);
+    padding:9px;
+    column-gap:8px;
+  }
+  .rt-manager .rt-evidence-heading-actions{
+    width:100%;
+    justify-content:space-between;
+  }
+  .rt-manager .rt-evidence-entry-heading{
+    grid-template-columns:minmax(0,1fr);
+  }
+  .rt-manager .rt-evidence-entry-actions{
+    justify-content:space-between;
+  }
+  .rt-manager .rt-feat-heading{
+    flex-wrap:wrap;
+  }
+  .rt-manager .rt-feat-heading p{
+    display:block;
+  }
+  .rt-manager .rt-description-field textarea{
+    min-height:170px;
+    font-size:11px;
+  }
+  .rt-stat-public-card .rt-description-body,
+  .rt-evidence-public-card .rt-description-body,
+  .rt-public-feat-card .rt-description-body{
+    font-size:11px;
+    line-height:1.9;
+  }
+}

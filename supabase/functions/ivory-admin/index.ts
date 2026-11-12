@@ -223,13 +223,12 @@ type RespectContentValidation = { words: number; images: number };
 function validateRespectContent(
   raw: unknown,
   label: string,
-  options: { allowLinks?: boolean; imageLimit?: number; extraKeys?: string[] } = {},
+  options: { allowLinks?: boolean; extraKeys?: string[] } = {},
 ): RespectContentValidation {
   const allowLinks = options.allowLinks !== false;
-  const imageLimit = options.imageLimit ?? 10;
   const extraKeys = options.extraKeys || [];
   if (!isRecord(raw)) throw new RequestBodyError("Konten " + label + " tidak valid.", 400);
-  const allowedKeys = ["description", "images", ...(allowLinks ? ["link", "links"] : []), ...extraKeys];
+  const allowedKeys = ["description", "images", "link", "links", ...extraKeys];
   if (Object.keys(raw).some(field => !allowedKeys.includes(field))) {
     throw new RequestBodyError("Ada kolom yang tidak diizinkan pada konten " + label + ".", 400);
   }
@@ -242,18 +241,22 @@ function validateRespectContent(
     throw new RequestBodyError("Deskripsi " + label + " tidak boleh mengandung URL atau tautan. Pindahkan ke Link & teks referensi.", 400);
   }
 
-  const links: unknown[] = [];
-  if (allowLinks) {
-    if (raw.links !== undefined) {
-      if (!Array.isArray(raw.links)) throw new RequestBodyError("Daftar link pada " + label + " tidak valid.", 400);
-      links.push(...raw.links);
-    }
-    // Backward compatibility: older sections stored one link string.
-    if (raw.link !== undefined && raw.link !== null && raw.link !== "") {
-      if (typeof raw.link !== "string") throw new RequestBodyError("Link pada " + label + " tidak valid.", 400);
-      if (!Array.isArray(raw.links)) links.push(raw.link);
-    }
+  const submittedLinks: unknown[] = [];
+  if (raw.links !== undefined) {
+    if (!Array.isArray(raw.links)) throw new RequestBodyError("Daftar link pada " + label + " tidak valid.", 400);
+    submittedLinks.push(...raw.links);
   }
+  // Backward compatibility: older sections stored one link string.
+  if (raw.link !== undefined && raw.link !== null && raw.link !== "") {
+    if (typeof raw.link !== "string") throw new RequestBodyError("Link pada " + label + " tidak valid.", 400);
+    if (!Array.isArray(raw.links)) submittedLinks.push(raw.link);
+  }
+  // Introduction serializes an empty links array like every other editor area;
+  // permit that empty shape while continuing to forbid actual references there.
+  if (!allowLinks && submittedLinks.some(candidate => typeof candidate !== "string" || candidate.trim().length > 0)) {
+    throw new RequestBodyError("Introduction tidak menerima link atau teks referensi.", 400);
+  }
+  const links = allowLinks ? submittedLinks : [];
 
   let plainTextWords = 0;
   let nonEmptyLinks = 0;
@@ -275,8 +278,8 @@ function validateRespectContent(
   }
 
   const images = raw.images;
-  if (!Array.isArray(images) || images.length > imageLimit) {
-    throw new RequestBodyError("Jumlah foto pada " + label + " melebihi batas.", 400);
+  if (!Array.isArray(images)) {
+    throw new RequestBodyError("Daftar foto pada " + label + " tidak valid.", 400);
   }
   for (const image of images) {
     if (!isRecord(image) || Object.keys(image).some(field => field !== "path" && field !== "url") ||
@@ -342,7 +345,6 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
     throw new RequestBodyError("Struktur Respect Thread tidak lengkap atau mengandung bagian yang tidak dikenal.", 400);
   }
 
-  let threadImageCount = 0;
   for (const key of respectSectionKeys) {
     if (!Object.prototype.hasOwnProperty.call(raw, key)) continue; // Older seven-section threads remain readable and editable.
     const section = raw[key];
@@ -353,11 +355,9 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
     const extraKeys = isStatistic ? ["categories"] : isEvidence ? ["entries"] : [];
     const base = validateRespectContent(section, key, {
       allowLinks: key !== "introduction",
-      imageLimit: key === "introduction" ? 1 : 10,
       extraKeys,
     });
     let sectionWords = base.words;
-    threadImageCount += base.images;
 
     if (isStatistic && section.categories !== undefined) {
       if (!isRecord(section.categories) ||
@@ -366,16 +366,20 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
         throw new RequestBodyError("Empat kategori Statistics harus tersedia secara terpisah.", 400);
       }
       for (const metric of statisticMetricKeys) {
-        const result = validateRespectContent(section.categories[metric], "Statistics / " + metric);
-        sectionWords += result.words;
-        threadImageCount += result.images;
+        const category = section.categories[metric];
+        if (!isRecord(category)) throw new RequestBodyError("Kategori Statistics / " + metric + " tidak valid.", 400);
+        const level = category.level;
+        if (level !== undefined && (typeof level !== "string" || level.length > 180 || containsRespectLink(level))) {
+          throw new RequestBodyError("Nilai Statistics / " + metric + " maksimal 180 karakter dan tidak boleh berisi URL.", 400);
+        }
+        const result = validateRespectContent(category, "Statistics / " + metric, { extraKeys: ["level"] });
+        sectionWords += result.words + respectDescriptionWordCount(typeof level === "string" ? level : "");
       }
     }
 
     if (isEvidence) {
       const evidence = validateRespectEvidenceEntries(section.entries, key);
       sectionWords += evidence.words;
-      threadImageCount += evidence.images;
     }
 
     if (sectionWords > respectSectionWordLimits[key]) {
@@ -383,9 +387,6 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
     }
   }
 
-  if (threadImageCount > 10) {
-    throw new RequestBodyError("Satu Respect Thread maksimal 10 foto secara keseluruhan.", 400);
-  }
   return raw;
 }
 
@@ -439,9 +440,7 @@ const fieldRules: Record<string, Record<string, (value: unknown) => boolean>> = 
     title: v => typeof v === "string" && v.trim().length > 0 && v.length <= 180,
     character_name: v => typeof v === "string" && v.length <= 160,
     universe: v => typeof v === "string" && v.length <= 160,
-    sections: v => {
-      try { validateRespectSections(v); return true; } catch { return false; }
-    },
+    sections: v => { validateRespectSections(v); return true; },
     is_published: v => typeof v === "boolean",
   },
 };
@@ -502,7 +501,7 @@ Deno.serve(async (req: Request) => {
     let body: Record<string, unknown> = {};
     if (req.method !== "GET" && queryAction !== "upload") {
       try {
-        body = await readJsonBody(req, 4_000_000);
+        body = await readJsonBody(req, 16 * 1024 * 1024);
       } catch (error) {
         if (error instanceof RequestBodyError) return respond({ error: error.message }, error.status);
         return respond({ error: "Format permintaan tidak valid." }, 400);
@@ -598,7 +597,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "cleanup-media" && req.method === "POST") {
-      if (!Array.isArray(body.paths) || body.paths.length > 31) {
+      if (!Array.isArray(body.paths)) {
         return respond({ error: "Daftar foto untuk pembersihan tidak valid." }, 400);
       }
       const submitted = body.paths.map(safeStoragePath);
@@ -753,6 +752,9 @@ Deno.serve(async (req: Request) => {
 
     return respond({ error: "Metode tidak didukung." }, 405);
   } catch (error) {
+    if (error instanceof RequestBodyError) {
+      return respond({ error: error.message }, error.status);
+    }
     console.error(error);
     return respond({ error: "Permintaan gagal diproses. Silakan coba lagi." }, 500);
   }

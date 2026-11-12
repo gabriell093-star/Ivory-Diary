@@ -153,7 +153,7 @@ const contentIsFilled = (content?: ThreadContent | null) => Boolean(
 const sectionContents = (section: ThreadSection, key: SectionKey): ThreadContent[] => {
   const contents: ThreadContent[] = [section];
   if (key === 'statistic') {
-    for (const meta of statMeta) contents.push(section.categories?.[meta.key] || blankContent());
+    for (const meta of statMeta) contents.push(section.categories?.[meta.key] || blankStatContent());
   }
   if (key === 'resistance' || key === 'hax_ability') {
     for (const entry of section.entries || []) contents.push(...entry.feats);

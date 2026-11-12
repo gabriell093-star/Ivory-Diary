@@ -283,9 +283,14 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
     return entry?.feats.find(feat => feat.id === target.featId) || blankContent();
   };
 
-  const updateTargetContent = (target: UploadTarget, patch: Partial<ThreadContent>) => {
+  const updateTargetContent = (
+    target: UploadTarget,
+    change: Partial<ThreadContent> | ((content: ThreadContent) => Partial<ThreadContent>),
+  ) => {
     setDraft(current => {
       if (!current) return current;
+      const content = getTargetContent(current, target);
+      const patch = typeof change === 'function' ? change(content) : change;
       const sections = { ...current.sections };
       if (target.kind === 'section') {
         sections[target.key] = { ...sections[target.key], ...patch };
@@ -388,7 +393,9 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       if (!response.ok) throw new Error(result.error || 'Foto gagal diunggah.');
       if (typeof result.path !== 'string' || typeof result.url !== 'string') throw new Error('Server tidak mengembalikan alamat foto yang valid.');
       newUploadPathsRef.current.push(result.path);
-      updateTargetContent(cropTarget, { images: [...currentContent.images, { path: result.path, url: result.url }] });
+      updateTargetContent(cropTarget, content => ({
+        images: [...content.images, { path: result.path, url: result.url }],
+      }));
       setCropFile(null);
       setCropTarget(null);
       setNotice('Foto berhasil ditambahkan.');
@@ -398,9 +405,9 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
   };
 
   const removeImage = (target: UploadTarget, index: number) => {
-    if (!draft) return;
-    const content = getTargetContent(draft, target);
-    updateTargetContent(target, { images: content.images.filter((_, imageIndex) => imageIndex !== index) });
+    updateTargetContent(target, content => ({
+      images: content.images.filter((_, imageIndex) => imageIndex !== index),
+    }));
   };
 
   const validateContent = (content: ThreadContent, label: string, allowLinks = true): string | null => {

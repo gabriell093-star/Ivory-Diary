@@ -28,7 +28,6 @@ const serviceSeed:Service[]=[
 const dateLabel=(value:string)=>new Intl.DateTimeFormat('id-ID',{day:'numeric',month:'long',year:'numeric'}).format(new Date(value+'T00:00:00'));
 const fieldLabel=(key:string)=>key.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
 const localDateValue=(date=new Date())=>[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
-const MAX_TESTIMONIAL_IMAGES=20;
 function Portrait({src,name,large=false}:{src:string|null;name:string;large?:boolean}){
  const [failed,setFailed]=useState(!src);useEffect(()=>setFailed(!src),[src]);
  return failed?<div className={large?'portrait-fallback portrait-large':'portrait-fallback'} aria-label={name}>{name.slice(0,1)}</div>:<img src={src||''} alt={name} onError={()=>setFailed(true)}/>;
@@ -205,7 +204,6 @@ function App(){
    if(!String(snapshot.description||'').trim()){setNotice('Isi deskripsi hasil pekerjaan terlebih dahulu.');return}
    if(!String(snapshot.work_date||'').trim()){setNotice('Tanggal pekerjaan harus diisi.');return}
    if(!Array.isArray(snapshot.image_urls)||snapshot.image_urls.length===0){setNotice('Tambahkan minimal satu foto sebelum menyimpan testimoni.');return}
-   if(snapshot.image_urls.length>MAX_TESTIMONIAL_IMAGES){setNotice('Satu testimoni maksimal '+MAX_TESTIMONIAL_IMAGES+' foto. Hapus foto tambahan sebelum menyimpan.');return}
   }
   setSaving(true);
   setNotice('Menyimpan perubahan dan menunggu konfirmasi server…');
@@ -243,7 +241,6 @@ function App(){
  const updateField=(key:string,value:any)=>setEditing(current=>current?({...current,[key]:value}):current);
  const finishCrop=async(file:File)=>{
   if(!cropTarget)throw new Error('Tujuan upload foto tidak ditemukan.');
-  if(cropTarget==='image_urls'&&(editing?.image_urls||[]).length>=MAX_TESTIMONIAL_IMAGES)throw new Error('Satu testimoni maksimal '+MAX_TESTIMONIAL_IMAGES+' foto. Hapus foto tambahan sebelum menambahkan yang baru.');
   setCropBusy(true);
   try{
    const uploaded=await uploadImage(file);
@@ -304,8 +301,8 @@ function App(){
    {editing?<section className="edit-panel" aria-busy={saving||cropBusy}><div className="edit-heading"><h2>{editing.id?'Edit':'Tambah'} {adminTab==='site_content'?'konten':adminTab==='services'?'layanan':adminTab==='staff'?'staff':'testimoni'}</h2><button className="icon-button" type="button" aria-label="Tutup editor" disabled={saving||cropBusy} onClick={cancelAdminEditor}><X/></button></div><fieldset className="edit-fields" disabled={saving||cropBusy}>
     {Object.entries(editing).filter(([key])=>!['id','created_at','updated_at','image_paths'].includes(key)&&!(adminTab==='testimonials'&&key==='category')).map(([key,value])=><div className="field" key={key}><label className="field-label" htmlFor={'owner-field-'+key}>{key==='service_slug'&&adminTab==='testimonials'?'Jenis pekerjaan':fieldLabel(key)}</label>
       {key==='photo_path'||key==='image_urls'?<>
-       <input id={'owner-field-'+key} type="file" accept="image/jpeg,image/png,image/webp" disabled={saving||cropBusy||(key==='image_urls'&&adminTab==='testimonials'&&(editing.image_urls||[]).length>=MAX_TESTIMONIAL_IMAGES)} onChange={event=>{const file=event.target.files?.[0];if(file){if(key==='image_urls'&&adminTab==='testimonials'&&(editing.image_urls||[]).length>=MAX_TESTIMONIAL_IMAGES){setNotice('Satu testimoni maksimal '+MAX_TESTIMONIAL_IMAGES+' foto.');}else if(file.size>20*1024*1024){setNotice('Ukuran foto sumber maksimal 20 MB.');}else{setCropTarget(key as 'photo_path'|'image_urls');setCropFile(file);setNotice('');navigate('/owner/crop')}}event.target.value=''}}/>
-       <small>{adminTab==='testimonials'&&key==='image_urls'?'JPG, PNG, atau WebP · Maksimal 20 MB sebelum crop · '+(editing.image_urls||[]).length+'/'+MAX_TESTIMONIAL_IMAGES+' foto.':'JPG, PNG, atau WebP · Maksimal 20 MB sebelum crop. Foto akan dipotong dan dioptimalkan sebelum diunggah.'}</small>
+       <input id={'owner-field-'+key} type="file" accept="image/jpeg,image/png,image/webp" disabled={saving||cropBusy} onChange={event=>{const file=event.target.files?.[0];if(file){if(file.size>20*1024*1024){setNotice('Ukuran foto sumber maksimal 20 MB.');}else{setCropTarget(key as 'photo_path'|'image_urls');setCropFile(file);setNotice('');navigate('/owner/crop')}}event.target.value=''}}/>
+       <small>{adminTab==='testimonials'&&key==='image_urls'?'JPG, PNG, atau WebP · Jumlah foto tidak dibatasi. Maksimal 20 MB per file sebelum crop.':'JPG, PNG, atau WebP · Maksimal 20 MB sebelum crop. Foto akan dipotong dan dioptimalkan sebelum diunggah.'}</small>
        {key==='photo_path'&&value&&<div className="image-preview-row"><img src={String(value)} alt="Pratinjau foto staf" onError={e=>{e.currentTarget.style.display="none"}}/><button type="button" className="row-actions-button" onClick={()=>updateField('photo_path',null)}>Hapus foto</button></div>}
        {key==='image_urls'&&Array.isArray(value)&&value.map((url:string,index:number)=><div className="image-preview-row" key={url+'-'+index}><img src={url} alt={'Pratinjau hasil '+(index+1)} onError={e=>{e.currentTarget.style.display='none'}}/><button type="button" className="row-actions-button" onClick={()=>removeImage(index)}>Hapus foto</button></div>)}
       </>:key==='service_slug'&&adminTab==='testimonials'?<select id={'owner-field-'+key} value={String(value??'')} onChange={e=>{const selected=services.find(service=>service.slug===e.target.value);updateField('service_slug',e.target.value);if(selected)updateField('category',selected.category)}}><option value="">Pilih jenis pekerjaan</option>{services.map(service=><option key={service.slug} value={service.slug}>{service.title}</option>)}</select>

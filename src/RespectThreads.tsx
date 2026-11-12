@@ -86,7 +86,7 @@ function PublicContentBlock({ content, title, threadTitle }: { content?: ThreadC
   const normalized = normalizeContent(content);
   const references = (normalized.links || []).map(reference => reference.trim()).filter(Boolean);
   const images = normalized.images || [];
-  if (!normalized.description?.trim() && references.length === 0 && images.length === 0 && !normalized.level?.trim()) return null;
+  if (!normalized.description?.trim() && references.length === 0 && images.length === 0) return null;
 
   return (
     <div className="rt-public-content-block">

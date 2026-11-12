@@ -660,7 +660,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "cleanup-media" && req.method === "POST") {
-      if (!Array.isArray(body.paths) || body.paths.length > 5000) {
+      if (!Array.isArray(body.paths)) {
         return respond({ error: "Daftar foto untuk pembersihan tidak valid." }, 400);
       }
       const submitted = body.paths.map(safeStoragePath);

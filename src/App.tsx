@@ -43,7 +43,7 @@ function App(){
  const [loadError,setLoadError]=useState(false);const [menuOpen,setMenuOpen]=useState(false);const [activeCategory,setActiveCategory]=useState('all');
  const [modal,setModal]=useState<'order'|'staff'|'login'|'gallery'|null>(null);const [selectedService,setSelectedService]=useState<Service|null>(null);const [selectedStaff,setSelectedStaff]=useState<Staff|null>(null);const [selectedTestimonial,setSelectedTestimonial]=useState<Testimonial|null>(null);const [galleryIndex,setGalleryIndex]=useState(0);const [touchStart,setTouchStart]=useState<number|null>(null);
  const [quantity,setQuantity]=useState(1);const [tier,setTier]=useState('');const [loginName,setLoginName]=useState('');const [loginPass,setLoginPass]=useState('');const [loginError,setLoginError]=useState('');const [loginBusy,setLoginBusy]=useState(false);
- const [token,setToken]=useState(()=>sessionStorage.getItem('ivory-owner-token')||'');const [owner,setOwner]=useState<Owner|null>(null);const [adminTab,setAdminTab]=useState<AdminTab>('services');const [adminRows,setAdminRows]=useState<Record<string,any>[]>([]);const [editing,setEditing]=useState<Record<string,any>|null>(null);const [jsonDrafts,setJsonDrafts]=useState<Record<string,string>>({});const adminFetchSequence=useRef(0);const [saving,setSaving]=useState(false);const [notice,setNotice]=useState('');const [cropFile,setCropFile]=useState<File|null>(null);const [cropTarget,setCropTarget]=useState<'photo_path'|'image_urls'|null>(null);const [cropBusy,setCropBusy]=useState(false);
+ const [token,setToken]=useState(()=>sessionStorage.getItem('ivory-owner-token')||'');const [owner,setOwner]=useState<Owner|null>(null);const [adminTab,setAdminTab]=useState<AdminTab>('services');const [adminRows,setAdminRows]=useState<Record<string,any>[]>([]);const [editing,setEditing]=useState<Record<string,any>|null>(null);const [jsonDrafts,setJsonDrafts]=useState<Record<string,string>>({});const adminFetchSequence=useRef(0);const pendingAdminMediaRef=useRef<string[]>([]);const [saving,setSaving]=useState(false);const [notice,setNotice]=useState('');const [cropFile,setCropFile]=useState<File|null>(null);const [cropTarget,setCropTarget]=useState<'photo_path'|'image_urls'|null>(null);const [cropBusy,setCropBusy]=useState(false);
  useEffect(()=>{document.documentElement.dataset.theme=theme},[theme]);
  useEffect(()=>{if(localStorage.getItem('ivory-theme'))return;const media=window.matchMedia('(prefers-color-scheme: dark)');const update=()=>{if(!localStorage.getItem('ivory-theme'))setTheme(media.matches?'dark':'light')};media.addEventListener('change',update);return()=>media.removeEventListener('change',update)},[]);
  const toggleTheme=()=>{const next=theme==='light'?'dark':'light';localStorage.setItem('ivory-theme',next);setTheme(next)};
@@ -138,7 +138,7 @@ function App(){
  const estimate=selectedService?.pricing_type==='per_unit'?(optionPrice||0)*quantity:optionPrice??null;
  const orderNow=()=>{if(!selectedService||!selectedStaff)return;const raw=(selectedStaff.whatsapp_number||'').replace(/\D/g,'');const number=raw.startsWith('62')?raw:raw.startsWith('0')?'62'+raw.slice(1):raw;if(number.length<10){setNotice('Nomor WhatsApp staf belum diatur dengan benar.');return}const lines=['Halo, saya ingin melakukan order melalui Ivory Diary.','Layanan: '+selectedService.title,'Pilihan: '+(tier||selectedService.price_label),...(selectedService.pricing_type==='per_unit'?['Jumlah: '+quantity+' '+(selectedService.unit_label||'')]:[]),...(estimate!==null?['Estimasi Harga: '+money(estimate)]:[]),'','Saya ingin berkonsultasi lebih lanjut mengenai kebutuhan saya.'];window.open('https://wa.me/'+number+'?text='+encodeURIComponent(lines.join('\n')),'_blank','noopener,noreferrer')};
  const login=async(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();setLoginBusy(true);setLoginError('');try{const response=await fetch(ADMIN_URL+'?action=login',{method:'POST',headers:{'Content-Type':'application/json','apikey':import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY||import.meta.env.VITE_SUPABASE_ANON_KEY||''},body:JSON.stringify({username:loginName,password:loginPass})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Login gagal. Periksa kembali kredensial Anda.');sessionStorage.setItem('ivory-owner-token',data.token);setToken(data.token);setOwner(data.owner);setLoginPass('');navigate('/owner')}catch(e:any){setLoginError(e.message||'Login gagal.')}finally{setLoginBusy(false)}};
- const logout=async()=>{try{await adminRequest(token,'logout')}catch(error){console.error('Owner logout request failed:',error)}adminFetchSequence.current++;sessionStorage.removeItem('ivory-owner-token');setToken('');setOwner(null);setAdminRows([]);setEditing(null);setJsonDrafts({});navigate('/')};
+ const logout=async()=>{await cleanupAdminMedia();try{await adminRequest(token,'logout')}catch(error){console.error('Owner logout request failed:',error)}adminFetchSequence.current++;sessionStorage.removeItem('ivory-owner-token');setToken('');setOwner(null);setAdminRows([]);setEditing(null);setJsonDrafts({});navigate('/')};
  const uploadImage=async(file:File)=>{
   if(file.type!=='image/jpeg')throw new Error('Hasil crop harus berupa JPEG.');
   if(file.size>8*1024*1024)throw new Error('Ukuran gambar maksimal 8 MB.');
@@ -153,7 +153,22 @@ function App(){
   if(typeof result.url!=='string'||typeof result.path!=='string')throw new Error('Server tidak mengembalikan alamat foto yang valid.');
   return result as {path:string;url:string};
 };
- const beginNew=()=>{const data:Record<AdminTab,Record<string,any>>={
+ const cleanupAdminMedia=async()=>{
+  const paths=[...new Set(pendingAdminMediaRef.current)];
+  if(!paths.length)return;
+  try{
+   const result=await adminRequest<{ok?:boolean}>(token,'cleanup-media',{paths});
+   if(result?.ok)pendingAdminMediaRef.current=[];
+  }catch(error){
+   console.warn('Temporary admin media cleanup deferred:',error);
+  }
+ };
+ const cancelAdminEditor=()=>{
+  setEditing(null);
+  setJsonDrafts({});
+  void cleanupAdminMedia();
+ };
+ const beginNew=()=>{void cleanupAdminMedia();const data:Record<AdminTab,Record<string,any>>={
  services:{slug:'',category:'battle-boarding',title:'',description:'',details:'',pricing_type:'fixed',price_label:'',base_price:null,unit_label:'',options:[],is_active:true,sort_order:0},
  testimonials:{service_slug:'',category:'battle-boarding',description:'',work_date:localDateValue(),image_paths:[],image_urls:[],is_published:true,sort_order:0},
  staff:{slug:'',name:'',summary:'',bio:'',whatsapp_number:'',photo_path:null,is_visible:true,is_detailed:true,sort_order:0},
@@ -183,6 +198,7 @@ function App(){
     ? await adminRequest<{data?:Record<string,any>}>(token,'update',{table:tabSnapshot,id:snapshot.id,values},'PATCH')
     : await adminRequest<{data?:Record<string,any>}>(token,'create',{table:tabSnapshot,values});
    if(!response?.data)throw new Error('Server belum mengonfirmasi bahwa perubahan tersimpan. Editor tetap dibuka agar data tidak hilang.');
+   await cleanupAdminMedia();
    setEditing(null);
    setJsonDrafts({});
    const [,refreshed]=await Promise.all([fetchAdmin(tabSnapshot),refreshPublicContent(tabSnapshot)]);
@@ -214,6 +230,7 @@ function App(){
   setCropBusy(true);
   try{
    const uploaded=await uploadImage(file);
+   pendingAdminMediaRef.current.push(uploaded.path);
    if(cropTarget==='photo_path')updateField('photo_path',uploaded.url);
    else{
     updateField('image_urls',[...(editing?.image_urls||[]),uploaded.url]);
@@ -260,14 +277,14 @@ function App(){
 
  if(owner&&path==='/owner')return <div className="admin-shell">
   <aside className="admin-side"><button className="brand brand-button" type="button" onClick={()=>navigate('/')} aria-label="Ivory Diary — Beranda"><img src="/logo.svg" alt="Ivory Diary"/></button><button className="owner-back-link" type="button" onClick={()=>navigate('/')}><ArrowLeft size={15}/> Kembali ke Beranda</button><p className="admin-caption">WORKSPACE</p>
-   {([['services','Layanan'],['testimonials','Testimoni'],['staff','Staff'],['site_content','Konten Website'],['respect_threads','Respect Thread']] as [AdminTab,string][]).map(([tab,label])=><button key={tab} disabled={saving||cropBusy} className={adminTab===tab?'side-link active':'side-link'} onClick={()=>{setEditing(null);setJsonDrafts({});if(tab==='respect_threads'){adminFetchSequence.current++;setAdminTab(tab);setNotice('')}else void fetchAdmin(tab)}}>{label}</button>)}
+   {([['services','Layanan'],['testimonials','Testimoni'],['staff','Staff'],['site_content','Konten Website'],['respect_threads','Respect Thread']] as [AdminTab,string][]).map(([tab,label])=><button key={tab} disabled={saving||cropBusy} className={adminTab===tab?'side-link active':'side-link'} onClick={()=>{cancelAdminEditor();if(tab==='respect_threads'){adminFetchSequence.current++;setAdminTab(tab);setNotice('')}else void fetchAdmin(tab)}}>{label}</button>)}
    <button className="side-link" type="button" onClick={()=>navigate('/flip-coin')}>Flip Coin</button>
    <div className="side-bottom"><span>Masuk sebagai <b>{owner.display_name}</b></span><button className="side-link" onClick={logout}>Keluar</button></div>
   </aside>
   <main className="admin-main">{adminTab==='respect_threads'?<RespectThreadManager token={token} onNavigate={navigate}/>:<>
    <header className="admin-top"><div><span className="eyebrow">IVORY DIARY / OWNER</span><h1>{({services:'Layanan',testimonials:'Testimoni',staff:'Staff',site_content:'Konten Website',respect_threads:'Respect Thread'} as Record<AdminTab,string>)[adminTab]}</h1></div><button className="button primary small" disabled={saving||cropBusy} onClick={beginNew}><Plus size={16}/> Tambah</button></header>
    {notice&&<div className="notice" role="status"><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Tutup pesan"><X size={15}/></button></div>}
-   {editing?<section className="edit-panel" aria-busy={saving||cropBusy}><div className="edit-heading"><h2>{editing.id?'Edit':'Tambah'} {adminTab==='site_content'?'konten':adminTab==='services'?'layanan':adminTab==='staff'?'staff':'testimoni'}</h2><button className="icon-button" type="button" aria-label="Tutup editor" disabled={saving||cropBusy} onClick={()=>{setEditing(null);setJsonDrafts({})}}><X/></button></div><fieldset className="edit-fields" disabled={saving||cropBusy}>
+   {editing?<section className="edit-panel" aria-busy={saving||cropBusy}><div className="edit-heading"><h2>{editing.id?'Edit':'Tambah'} {adminTab==='site_content'?'konten':adminTab==='services'?'layanan':adminTab==='staff'?'staff':'testimoni'}</h2><button className="icon-button" type="button" aria-label="Tutup editor" disabled={saving||cropBusy} onClick={cancelAdminEditor}><X/></button></div><fieldset className="edit-fields" disabled={saving||cropBusy}>
     {Object.entries(editing).filter(([key])=>!['id','created_at','updated_at','image_paths'].includes(key)&&!(adminTab==='testimonials'&&key==='category')).map(([key,value])=><div className="field" key={key}><label className="field-label" htmlFor={'owner-field-'+key}>{key==='service_slug'&&adminTab==='testimonials'?'Jenis pekerjaan':fieldLabel(key)}</label>
       {key==='photo_path'||key==='image_urls'?<>
        <input id={'owner-field-'+key} type="file" accept="image/jpeg,image/png,image/webp" disabled={saving||cropBusy||(key==='image_urls'&&adminTab==='testimonials'&&(editing.image_urls||[]).length>=MAX_TESTIMONIAL_IMAGES)} onChange={event=>{const file=event.target.files?.[0];if(file){if(key==='image_urls'&&adminTab==='testimonials'&&(editing.image_urls||[]).length>=MAX_TESTIMONIAL_IMAGES){setNotice('Satu testimoni maksimal '+MAX_TESTIMONIAL_IMAGES+' foto.');}else if(file.size>20*1024*1024){setNotice('Ukuran foto sumber maksimal 20 MB.');}else{setCropTarget(key as 'photo_path'|'image_urls');setCropFile(file);setNotice('');navigate('/owner/crop')}}event.target.value=''}}/>
@@ -285,8 +302,8 @@ function App(){
       :<input id={'owner-field-'+key} value={String(value??'')} onChange={e=>updateField(key,e.target.value)}/>}
     </div>)}
      </fieldset>
-     <div className="edit-actions"><button className="button secondary" disabled={saving||cropBusy} onClick={()=>{setEditing(null);setJsonDrafts({})}}>Batal</button><button className="button primary" disabled={saving||cropBusy} onClick={saveAdmin}>{saving?'Menyimpan…':'Simpan perubahan'}</button></div>
-   </section>:<section className="admin-list">{adminRows.length===0?<div className="empty-state">Belum ada data untuk ditampilkan.</div>:adminRows.map((row,index)=><article className="admin-row" key={row.id||row.key||index}><div><b>{row.title||row.name||row.key||row.description||row.slug}</b><small>{row.category||row.slug||String(row.value||'').slice(0,80)}</small></div><div className="row-actions"><button disabled={saving||cropBusy} onClick={()=>{setJsonDrafts({});setEditing({...row})}}><Pencil size={13}/> Edit</button>{adminTab!=='site_content'&&<button className="danger-text" disabled={saving||cropBusy} onClick={()=>void deleteAdmin(row)}><Trash2 size={13}/> Hapus</button>}</div></article>)}</section>}
+     <div className="edit-actions"><button className="button secondary" disabled={saving||cropBusy} onClick={cancelAdminEditor}>Batal</button><button className="button primary" disabled={saving||cropBusy} onClick={saveAdmin}>{saving?'Menyimpan…':'Simpan perubahan'}</button></div>
+   </section>:<section className="admin-list">{adminRows.length===0?<div className="empty-state">Belum ada data untuk ditampilkan.</div>:adminRows.map((row,index)=><article className="admin-row" key={row.id||row.key||index}><div><b>{row.title||row.name||row.key||row.description||row.slug}</b><small>{row.category||row.slug||String(row.value||'').slice(0,80)}</small></div><div className="row-actions"><button disabled={saving||cropBusy} onClick={()=>{cancelAdminEditor();setEditing({...row})}}><Pencil size={13}/> Edit</button>{adminTab!=='site_content'&&<button className="danger-text" disabled={saving||cropBusy} onClick={()=>void deleteAdmin(row)}><Trash2 size={13}/> Hapus</button>}</div></article>)}</section>}
    <p className="admin-helper">Perubahan tersimpan ke database dan akan tampil pada halaman publik setelah pembaruan berhasil dimuat.</p>
   </>}</main>
  </div>;

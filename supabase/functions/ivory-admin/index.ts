@@ -154,14 +154,39 @@ function storagePathFromPublicUrl(value: unknown): string | null {
   }
 }
 
-async function removeIvoryMedia(paths: unknown[]) {
+async function removeIvoryMedia(paths: unknown[]): Promise<number> {
   const unique = [...new Set(paths.map(safeStoragePath).filter((value): value is string => Boolean(value)))];
-  if (!unique.length) return;
-  // Keep Storage removal requests small while allowing any number of images per thread.
-  for (let index = 0; index < unique.length; index += 100) {
-    const { error } = await db.storage.from("ivory-public").remove(unique.slice(index, index + 100));
-    if (error) console.error("Ivory media cleanup failed:", error.message);
+  if (!unique.length) return 0;
+
+  // Never remove an asset while any public record still references it.
+  const [threadsResult, staffResult, testimonialsResult] = await Promise.all([
+    db.from("respect_threads").select("sections"),
+    db.from("staff").select("photo_path"),
+    db.from("testimonials").select("image_paths"),
+  ]);
+  if (threadsResult.error || staffResult.error || testimonialsResult.error) {
+    console.error("Ivory media reference check failed:", threadsResult.error?.message || staffResult.error?.message || testimonialsResult.error?.message);
+    return 0;
   }
+
+  const referenced = new Set<string>([
+    ...(threadsResult.data || []).flatMap(row => respectThreadImagePaths(row.sections)),
+    ...(staffResult.data || []).map(row => storagePathFromPublicUrl(row.photo_path)).filter((path): path is string => Boolean(path)),
+    ...(testimonialsResult.data || []).flatMap(row => Array.isArray(row.image_paths)
+      ? row.image_paths.map(safeStoragePath).filter((path): path is string => Boolean(path))
+      : []),
+  ]);
+  const unused = unique.filter(path => !referenced.has(path));
+  let removed = 0;
+
+  // Keep Storage removal requests small while allowing any number of images.
+  for (let index = 0; index < unused.length; index += 100) {
+    const batch = unused.slice(index, index + 100);
+    const { error } = await db.storage.from("ivory-public").remove(batch);
+    if (error) console.error("Ivory media cleanup failed:", error.message);
+    else removed += batch.length;
+  }
+  return removed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -598,22 +623,18 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "cleanup-media" && req.method === "POST") {
-      if (!Array.isArray(body.paths)) {
+      if (!Array.isArray(body.paths) || body.paths.length > 5000) {
         return respond({ error: "Daftar foto untuk pembersihan tidak valid." }, 400);
       }
       const submitted = body.paths.map(safeStoragePath);
-      if (submitted.some(path => !path || !path.startsWith("respect-threads/"))) {
-        return respond({ error: "Pembersihan hanya diizinkan untuk foto Respect Thread." }, 400);
+      const generatedUploadPath = (path: string | null): path is string => Boolean(path) &&
+        /^(?:respect-threads\\/)?\\d{13}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[A-Za-z0-9._-]{1,100}$/i.test(path);
+      if (submitted.some(path => !generatedUploadPath(path))) {
+        return respond({ error: "Pembersihan hanya diizinkan untuk foto yang diunggah melalui Ivory Diary." }, 400);
       }
       const candidates = [...new Set(submitted.filter((path): path is string => Boolean(path)))];
-      if (!candidates.length) return respond({ ok: true, removed: 0 });
-
-      const { data: threads, error: readError } = await db.from("respect_threads").select("sections");
-      if (readError) throw readError;
-      const referenced = new Set((threads || []).flatMap(row => respectThreadImagePaths(row.sections)));
-      const unused = candidates.filter(path => !referenced.has(path));
-      await removeIvoryMedia(unused);
-      return respond({ ok: true, removed: unused.length });
+      const removed = await removeIvoryMedia(candidates);
+      return respond({ ok: true, removed });
     }
 
     if (action === "upload" && req.method === "POST") {

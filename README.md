@@ -38,7 +38,7 @@ Akun Owner hanya dibuat melalui SQL Editor Supabase. File `supabase/owner-setup.
 
 ## Dashboard Owner
 
-Buka tautan **Owner access** di footer. Owner dapat mengelola layanan, testimoni (termasuk beberapa foto), staf, konten website, dan Respect Thread. Respect Thread memiliki tujuh bagian, batas 15.000 kata total, tautan referensi HTTP(S), foto JPEG hasil crop, serta status publik/draft. Data hanya dapat ditulis melalui Edge Function dengan sesi Owner; pengunjung hanya dapat membaca thread yang dipublikasikan. Setelah selesai mengedit, pilih **Keluar** agar halaman publik memuat data terbaru.
+Buka tautan **Owner access** di footer. Owner dapat mengelola layanan, testimoni (termasuk beberapa foto), staf, konten website, dan Respect Thread. Respect Thread memiliki delapan bagian: Introduction (maksimal 2.000 kata) dan tujuh bagian lainnya (maksimal 15.000 kata per bagian, termasuk seluruh kategori dan feat pada bagian terkait). Introduction dibatasi satu foto; bagian lain tidak dibatasi jumlah fotonya. Referensi menggunakan URL HTTP(S) atau teks biasa maksimal 100 kata per area, dan semua foto wajib melewati cropper. Thread dapat disimpan sebagai draft atau dipublikasikan. Data hanya dapat ditulis melalui Edge Function dengan sesi Owner; pengunjung hanya dapat membaca thread yang dipublikasikan. Setelah selesai mengedit, pilih **Keluar** agar halaman publik memuat data terbaru.
 
 ## Build dan publikasi Vercel
 

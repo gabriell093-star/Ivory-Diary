@@ -360,6 +360,9 @@ function validateRespectSections(raw: unknown): Record<string, unknown> {
       allowLinks: key !== "introduction",
       extraKeys,
     });
+    if (key === "introduction" && base.images > 1) {
+      throw new RequestBodyError("Introduction hanya dapat memiliki maksimal 1 foto.", 400);
+    }
     let sectionWords = base.words;
 
     if (isStatistic && section.categories !== undefined) {

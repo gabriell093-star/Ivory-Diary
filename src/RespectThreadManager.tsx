@@ -571,8 +571,8 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
         <label className="field rt-description-field">
           <span>Penjelasan {label}</span>
           <textarea rows={7} maxLength={500000} value={content.description || ''} placeholder={'Jelaskan ' + label + ' secara runtut…'} aria-label={'Penjelasan ' + label} aria-invalid={containsRespectLink(content.description || '')} onChange={event => updateTargetContent(target, { description: event.target.value })} />
-          <small className="rt-description-guidance">{guidance} Angka, penomoran, desimal, tanda plus/minus, dan simbol boleh digunakan. Jangan tempelkan URL di deskripsi; masukkan ke Link & teks referensi.</small>
-          {containsRespectLink(content.description || '') && <small className="rt-validation-error" role="alert">Deskripsi tidak boleh berisi URL/tautan. Pindahkan URL ke bagian Link & teks referensi.</small>}
+          <small className="rt-description-guidance">{guidance} Angka, penomoran, desimal, tanda plus/minus, dan simbol boleh digunakan. {allowLinks ? 'Jangan tempelkan URL di deskripsi; masukkan ke Link & teks referensi.' : 'Introduction tidak menerima URL maupun referensi tautan.'}</small>
+          {containsRespectLink(content.description || '') && <small className="rt-validation-error" role="alert">{allowLinks ? 'Deskripsi tidak boleh berisi URL/tautan. Pindahkan URL ke bagian Link & teks referensi.' : 'Introduction tidak menerima URL. Pindahkan sumber ke area referensi pada bagian lain.'}</small>}
         </label>
         {allowLinks && <div className="rt-links-field">
           <div className="rt-links-field-heading"><span><Link2 size={13} /> Link & teks referensi</span><small>{links.filter(link => link.trim()).length} item · {plainWords} / 100 kata teks</small></div>
@@ -635,7 +635,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
           </div>
           <div className="rt-editor-guide" aria-label="Panduan penulisan Respect Thread">
             <article className="rt-editor-guide-card"><span className="eyebrow">01 / WORD LIMIT</span><b>Batas kata</b><p>Introduction maksimal 2.000 kata. Tujuh bagian lainnya maksimal 15.000 kata per bagian. Statistics dihitung gabungan untuk empat metrik.</p></article>
-            <article className="rt-editor-guide-card"><span className="eyebrow">02 / DESCRIPTION</span><b>Deskripsi</b><p>Tulis uraian di kolom Penjelasan. URL tidak boleh berada di deskripsi; pindahkan ke Link & teks referensi. Angka dan simbol tetap diperbolehkan.</p></article>
+            <article className="rt-editor-guide-card"><span className="eyebrow">02 / DESCRIPTION</span><b>Deskripsi</b><p>Tulis uraian di kolom Penjelasan. URL tidak boleh berada di deskripsi. Introduction tidak menerima URL; bagian lain menyediakan area referensi. Angka dan simbol tetap diperbolehkan.</p></article>
             <article className="rt-editor-guide-card"><span className="eyebrow">03 / REFERENCES</span><b>Referensi</b><p>Tambahkan satu URL lengkap http:// atau https:// per item, atau teks biasa. Teks biasa maksimal 100 kata per area; jumlah item tautan tidak dibatasi.</p></article>
             <article className="rt-editor-guide-card"><span className="eyebrow">04 / MEDIA</span><b>Foto pendukung</b><p>Introduction hanya satu foto. Bagian lain bebas jumlah foto. Semua foto wajib di-crop; hasil akhir maksimal 3 MB per foto. Video tidak didukung.</p></article>
           </div>

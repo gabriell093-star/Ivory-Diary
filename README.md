@@ -38,7 +38,13 @@ Akun Owner hanya dibuat melalui SQL Editor Supabase. File `supabase/owner-setup.
 
 ## Dashboard Owner
 
-Buka tautan **Owner access** di footer. Owner dapat mengelola layanan, testimoni (termasuk beberapa foto), staf, konten website, dan Respect Thread. Respect Thread memiliki delapan bagian: Introduction (maksimal 2.000 kata) dan tujuh bagian lainnya (maksimal 15.000 kata per bagian, termasuk seluruh kategori dan feat pada bagian terkait). Introduction dibatasi satu foto; bagian lain tidak dibatasi jumlah fotonya. Referensi menggunakan URL HTTP(S) atau teks biasa maksimal 100 kata per area, dan semua foto wajib melewati cropper. Thread dapat disimpan sebagai draft atau dipublikasikan. Data hanya dapat ditulis melalui Edge Function dengan sesi Owner; pengunjung hanya dapat membaca thread yang dipublikasikan. Setelah selesai mengedit, pilih **Keluar** agar halaman publik memuat data terbaru.
+Buka tautan **Owner access** di footer. Owner dapat mengelola layanan, testimoni (dengan jumlah foto yang tidak dibatasi), staf, konten website, dan Respect Thread.
+
+Respect Thread memiliki delapan bagian: Introduction (maksimal 2.000 kata) serta Terminology, Cosmology, Personality, BIQ, Statistics, Resistances, dan Hax & Ability (masing-masing maksimal 15.000 kata). Batas Statistics dihitung gabungan untuk Attack Potency, Durability, Speed, dan Stamina. Batas Resistances dan Hax & Ability juga dihitung gabungan untuk semua entri dan Feat di bagian masing-masing.
+
+Introduction tidak menerima URL referensi dan hanya boleh memiliki satu foto. Tujuh bagian lainnya dapat memakai foto tanpa batas jumlah. Semua foto Respect Thread harus melewati cropper dan hasil akhirnya maksimal 3 MB per foto. Deskripsi tidak boleh memuat URL; letakkan satu URL lengkap HTTP(S) per item di bagian Link & teks referensi, atau gunakan teks biasa. Teks biasa pada referensi maksimal 100 kata per area editor; angka, penomoran, desimal, tanda plus/minus, dan simbol tetap diperbolehkan. Jumlah item referensi tidak dibatasi.
+
+Pada Resistances dan Hax & Ability, Owner dapat membuat banyak entri dan menambahkan beberapa Feat pendukung pada setiap entri. Tombol penambahan Feat tetap tersedia pada toolbar daftar saat pengguna menggulir. Thread dapat disimpan sebagai draft atau dipublikasikan. Data hanya dapat ditulis melalui Edge Function dengan sesi Owner; pengunjung hanya dapat membaca thread yang dipublikasikan.
 
 ## Build dan publikasi Vercel
 

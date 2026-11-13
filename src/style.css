@@ -3417,3 +3417,53 @@
 /* Keep disabled workspace fieldsets visually aligned with the existing design. */
 .edit-fields{display:block;min-width:0;margin:0;padding:0;border:0}
 .rt-editor-fieldset{display:block;width:100%;min-width:0;margin:0;padding:0;border:0}
+
+
+/* Respect Thread — current writing guide and public reading hierarchy */
+.rt-editor-section-intro{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:18px;
+}
+.rt-editor-guide{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;
+  margin:13px 0 18px;
+}
+.rt-editor-guide-card{
+  display:grid;align-content:start;gap:6px;min-width:0;
+  padding:13px 14px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg-soft);
+}
+.rt-editor-guide-card .eyebrow{font-size:7px;color:var(--red)}
+.rt-editor-guide-card>b{color:var(--ink);font:600 18px/1.1 var(--serif)}
+.rt-editor-guide-card>p{margin:0;color:var(--muted);font-size:9px;line-height:1.7}
+.rt-editor-guide-card strong{color:var(--ink)}
+.rt-public-guide{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;
+  margin:22px 0 8px;
+}
+.rt-public-guide>article{
+  display:grid;align-content:start;gap:7px;min-width:0;
+  padding:16px 17px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg-soft);
+}
+.rt-public-guide .eyebrow{font-size:7px;color:var(--red)}
+.rt-public-guide>article>b{color:var(--ink);font:600 21px/1.1 var(--serif)}
+.rt-public-guide>article>p{margin:0;color:var(--muted);font-size:10px;line-height:1.7}
+.rt-section-heading-copy{min-width:0}
+.rt-section-heading-copy>h2{margin:0}
+.rt-section-hint{max-width:660px;margin:8px 0 0;color:var(--muted);font-size:10px;line-height:1.7}
+.rt-evidence-heading p{max-width:740px}
+@media(max-width:900px){
+  .rt-editor-guide{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+  .rt-editor-section-intro{align-items:stretch;flex-direction:column}
+  .rt-editor-progress{width:100%;min-width:0;flex-basis:auto}
+  .rt-public-guide{grid-template-columns:1fr;gap:8px;margin-top:17px}
+  .rt-public-guide>article{padding:13px 14px}
+  .rt-public-guide>article>b{font-size:19px}
+}
+@media(max-width:520px){
+  .rt-editor-guide{grid-template-columns:1fr;gap:7px}
+  .rt-editor-guide-card{padding:12px}
+  .rt-section-hint{font-size:9px}
+}

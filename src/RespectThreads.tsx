@@ -30,14 +30,14 @@ const statMeta = [
 ] as const;
 
 const sectionMeta = [
-  { key: 'introduction', label: 'Introduction', index: '01', hint: 'Pengenalan karakter dan konteks.' },
-  { key: 'terminology', label: 'Terminology', index: '02', hint: 'Istilah khusus dan definisinya.' },
-  { key: 'cosmology', label: 'Cosmology', index: '03', hint: 'Struktur dunia dan skalanya.' },
-  { key: 'personality', label: 'Personality', index: '04', hint: 'Kepribadian dan karakterisasi.' },
-  { key: 'in_char', label: 'BIQ', index: '05', hint: 'Battle IQ dan kecerdasan bertarung karakter.' },
-  { key: 'statistic', label: 'Statistics', index: '06', hint: 'Attack Potency, Durability, Speed, dan Stamina.' },
-  { key: 'resistance', label: 'Resistances', index: '07', hint: 'Jenis resistansi beserta feat pendukungnya.' },
-  { key: 'hax_ability', label: 'Hax & Ability', index: '08', hint: 'Kemampuan beserta feat pendukungnya.' },
+  { key: 'introduction', label: 'Introduction', index: '01', hint: 'Pengenalan identitas karakter dan konteks utama.' },
+  { key: 'terminology', label: 'Terminology', index: '02', hint: 'Istilah, konsep, dan definisi yang digunakan dalam pembahasan.' },
+  { key: 'cosmology', label: 'Cosmology', index: '03', hint: 'Struktur dunia, alam, dimensi, ruang, waktu, dan skala kosmologi.' },
+  { key: 'personality', label: 'Personality', index: '04', hint: 'Kepribadian, motivasi, pola pikir, dan karakterisasi.' },
+  { key: 'in_char', label: 'BIQ', index: '05', hint: 'Battle IQ: strategi, kecerdikan, pengambilan keputusan, dan respons saat bertarung.' },
+  { key: 'statistic', label: 'Statistics', index: '06', hint: 'Empat metrik: Attack Potency, Durability, Speed, dan Stamina.' },
+  { key: 'resistance', label: 'Resistances', index: '07', hint: 'Setiap jenis resistansi ditampilkan sebagai entri dengan Feat pendukung.' },
+  { key: 'hax_ability', label: 'Hax & Ability', index: '08', hint: 'Setiap kemampuan ditampilkan sebagai entri dengan Feat pendukung.' },
 ] as const;
 
 const safeHttpUrl = (value?: string | null) => {
@@ -183,7 +183,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
             {(thread.character_name || thread.universe) && (
               <p className="rt-detail-meta">{[thread.character_name, thread.universe].filter(Boolean).join(' · ')}</p>
             )}
-            <p className="rt-detail-intro">Referensi karakter yang disusun berdasarkan pengenalan, konteks, statistik, kemampuan, resistansi, dan bukti feat pendukung.</p>
+            <p className="rt-detail-intro">Dokumentasi karakter dalam delapan bagian. Statistics dipecah menjadi empat metrik, sedangkan Resistances dan Hax & Ability dikelompokkan per entri dengan Feat pendukung, referensi, dan foto.</p>
           </div>
         </header>
 
@@ -199,10 +199,10 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
             if (!sectionIsFilled(section, meta.key)) return null;
             return (
               <article className="rt-section-card" id={'rt-' + meta.key} key={meta.key}>
-                <div className="rt-section-heading"><span>{meta.index}</span><div><p className="eyebrow">RESPECT THREAD / SECTION {meta.index}</p><h2>{meta.label}</h2></div></div>
+                <div className="rt-section-heading"><span>{meta.index}</span><div className="rt-section-heading-copy"><p className="eyebrow">RESPECT THREAD / SECTION {meta.index}</p><h2>{meta.label}</h2><p className="rt-section-hint">{meta.hint}</p></div></div>
 
                 {meta.key === 'statistic' ? <>
-                  {contentIsFilled(section) && <div className="rt-stat-overview"><PublicContentBlock content={section} title="Ringkasan statistik" threadTitle={thread.title} /></div>}
+                  {contentIsFilled(section) && <div className="rt-stat-overview"><PublicContentBlock content={section} title="Catatan umum Statistics" threadTitle={thread.title} /></div>}
                   <div className="rt-stat-public-list" aria-label="Empat kategori statistik">
                     {statMeta.map(category => {
                       const content = section.categories?.[category.key];
@@ -234,7 +234,7 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
                         {(entry.feats || []).map((feat, featIndex) => <article className="rt-public-feat-card" key={feat.id || featIndex}>
                           <div className="rt-public-feat-heading">
                             <span className="rt-public-feat-index">FEAT / {String(featIndex + 1).padStart(2, '0')}</span>
-                            <span className="rt-public-feat-label">SUPPORTING EVIDENCE</span>
+                            <span className="rt-public-feat-label">BUKTI PENDUKUNG</span>
                           </div>
                           <PublicContentBlock content={feat} title="Penjelasan feat" threadTitle={thread.title} />
                         </article>)}
@@ -258,9 +258,14 @@ export default function RespectThreads({ slug, onNavigate }: { slug?: string; on
         <div className="rt-list-hero-copy">
           <span className="eyebrow">IVORY DIARY / RESPECT THREAD</span>
           <h1>Respect <em>Thread.</em></h1>
-          <p>Temukan dokumentasi karakter yang disusun dengan penjelasan, referensi, statistik, kemampuan, resistansi, dan bukti pendukung.</p>
+          <p>Arsip analisis karakter yang disusun secara terstruktur dalam delapan bagian, mulai dari pengenalan dan statistik hingga Resistance serta Hax & Ability dengan Feat pendukung.</p>
         </div>
       </header>
+      <div className="rt-public-guide" aria-label="Panduan struktur Respect Thread">
+        <article><span className="eyebrow">01 / STRUCTURE</span><b>Delapan bagian</b><p>Introduction, Terminology, Cosmology, Personality, BIQ, Statistics, Resistances, serta Hax & Ability.</p></article>
+        <article><span className="eyebrow">02 / STATISTICS & FEATS</span><b>Bukti yang terstruktur</b><p>Statistics memuat empat metrik. Setiap entri Resistance atau Ability dapat memiliki beberapa Feat pendukung.</p></article>
+        <article><span className="eyebrow">03 / REFERENCES</span><b>Sumber dan media</b><p>Penjelasan, URL referensi, teks sumber, dan foto disajikan terpisah agar mudah ditelusuri.</p></article>
+      </div>
       <div className="rt-list-toolbar"><span>{loading ? 'MEMUAT THREAD…' : String(items.length).padStart(2, '0') + ' THREAD TERSEDIA'}</span><span>TERBUKA UNTUK PUBLIK</span></div>
       {error ? <div className="rt-empty"><p>{error}</p><button className="button secondary" onClick={() => window.location.reload()}>Muat ulang</button></div>
         : loading ? <div className="rt-loading">Memuat daftar Respect Thread…</div>

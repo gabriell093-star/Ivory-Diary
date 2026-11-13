@@ -40,14 +40,14 @@ const statMeta: { key: StatKey; label: string }[] = [
 ];
 
 const sectionMeta: { key: SectionKey; label: string; hint: string; maxWords: number }[] = [
-  { key: 'introduction', label: 'Introduction', hint: 'Pengenalan karakter dan konteks. Maksimal 2.000 kata.', maxWords: 2000 },
-  { key: 'terminology', label: 'Terminology', hint: 'Uraian istilah, konsep, atau penamaan khusus. Maksimal 15.000 kata.', maxWords: 15000 },
-  { key: 'cosmology', label: 'Cosmology', hint: 'Penjelasan struktur dunia, alam, dimensi, atau kosmologi. Maksimal 15.000 kata.', maxWords: 15000 },
-  { key: 'personality', label: 'Personality', hint: 'Uraian karakterisasi dan kepribadian. Maksimal 15.000 kata.', maxWords: 15000 },
-  { key: 'in_char', label: 'BIQ', hint: 'Penjelasan tindakan, pernyataan, atau konteks karakter dalam karakterisasi aslinya. Maksimal 15.000 kata.', maxWords: 15000 },
-  { key: 'statistic', label: 'Statistics', hint: 'Statistik dipisahkan menjadi Attack Potency, Durability, Speed, dan Stamina. Maksimal 15.000 kata untuk seluruh bagian.', maxWords: 15000 },
-  { key: 'resistance', label: 'Resistances', hint: 'Tambahkan setiap jenis resistansi sebagai entri terpisah, lalu lampirkan feat pendukungnya.', maxWords: 15000 },
-  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Tambahkan setiap kemampuan sebagai entri terpisah, lalu lampirkan feat pendukungnya.', maxWords: 15000 },
+  { key: 'introduction', label: 'Introduction', hint: 'Pengenalan karakter, identitas, dan konteks utama. Maksimal 2.000 kata; tanpa referensi tautan dan hanya satu foto.', maxWords: 2000 },
+  { key: 'terminology', label: 'Terminology', hint: 'Istilah, konsep, nama khusus, dan definisi yang digunakan dalam pembahasan. Maksimal 15.000 kata.', maxWords: 15000 },
+  { key: 'cosmology', label: 'Cosmology', hint: 'Struktur dunia, alam, dimensi, ruang, waktu, dan skala kosmologi. Maksimal 15.000 kata.', maxWords: 15000 },
+  { key: 'personality', label: 'Personality', hint: 'Karakterisasi, kepribadian, pola pikir, motivasi, dan kecenderungan perilaku. Maksimal 15.000 kata.', maxWords: 15000 },
+  { key: 'in_char', label: 'BIQ', hint: 'Battle IQ: strategi, pengambilan keputusan, kecerdikan, dan respons karakter dalam situasi bertarung. Maksimal 15.000 kata.', maxWords: 15000 },
+  { key: 'statistic', label: 'Statistics', hint: 'Empat metrik terpisah: Attack Potency, Durability, Speed, dan Stamina. Batas 15.000 kata dihitung gabungan untuk seluruh kategori.', maxWords: 15000 },
+  { key: 'resistance', label: 'Resistances', hint: 'Daftarkan setiap jenis resistansi sebagai entri tersendiri dan lampirkan satu atau beberapa Feat pendukung. Batas 15.000 kata berlaku untuk seluruh bagian ini.', maxWords: 15000 },
+  { key: 'hax_ability', label: 'Hax & Ability', hint: 'Daftarkan setiap kemampuan sebagai entri tersendiri dan lampirkan satu atau beberapa Feat pendukung. Batas 15.000 kata berlaku untuk seluruh bagian ini.', maxWords: 15000 },
 ];
 
 const blankContent = (): ThreadContent => ({ description: '', links: [], images: [] });
@@ -424,7 +424,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
       if (reference.length > 10000) return 'Salah satu referensi ' + label + ' terlalu panjang.';
       if (isValidHttpReference(reference)) continue;
       if (/^https?:\/\//i.test(reference) || containsRespectLink(reference)) {
-        return 'Referensi ' + label + ' harus berupa satu URL HTTP/HTTPS yang valid per item, atau teks biasa tanpa URL.';
+        return 'Referensi ' + label + ' harus berupa satu URL lengkap berawalan http:// atau https://, atau teks biasa tanpa URL. Jangan gabungkan beberapa URL dalam satu item.';
       }
       plainTextWords += words(reference);
     }
@@ -571,7 +571,7 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
         <label className="field rt-description-field">
           <span>Penjelasan {label}</span>
           <textarea rows={7} maxLength={500000} value={content.description || ''} placeholder={'Jelaskan ' + label + ' secara runtut…'} aria-label={'Penjelasan ' + label} aria-invalid={containsRespectLink(content.description || '')} onChange={event => updateTargetContent(target, { description: event.target.value })} />
-          <small className="rt-description-guidance">{guidance}</small>
+          <small className="rt-description-guidance">{guidance} Angka, penomoran, desimal, tanda plus/minus, dan simbol boleh digunakan. Jangan tempelkan URL di deskripsi; masukkan ke Link & teks referensi.</small>
           {containsRespectLink(content.description || '') && <small className="rt-validation-error" role="alert">Deskripsi tidak boleh berisi URL/tautan. Pindahkan URL ke bagian Link & teks referensi.</small>}
         </label>
         {allowLinks && <div className="rt-links-field">
@@ -629,7 +629,16 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
             <label className="field"><span>Alamat halaman (slug) *</span><input value={draft.slug} maxLength={180} placeholder="nama-karakter-respect-thread" onChange={event => { setSlugTouched(true); setDraft(current => current ? ({ ...current, slug: makeSlug(event.target.value) }) : current); }} /><small>Halaman publik: /respect-thread/{draft.slug || 'slug-thread'}</small></label>
           </div>
 
-          <div className="rt-editor-section-intro"><div><span className="eyebrow">CONTENT STRUCTURE / 08 SECTIONS</span><p>Pilih bagian untuk mulai menulis. Bagian yang sudah berisi materi atau bukti akan ditandai.</p></div><div className="rt-editor-progress" aria-label={filledSections + ' dari ' + sectionMeta.length + ' bagian sudah diisi'}><div><span>{filledSections} / {String(sectionMeta.length).padStart(2, '0')} BAGIAN TERISI</span><b>{progressPercent}%</b></div><div className="rt-progress-track"><span style={{ width: progressPercent + '%' }} /></div></div></div>
+          <div className="rt-editor-section-intro">
+            <div><span className="eyebrow">CONTENT STRUCTURE / 08 SECTIONS</span><p>Susun materi melalui delapan bagian. Pilih bagian di samping; progres dan jumlah kata akan mengikuti isi yang sudah ditulis.</p></div>
+            <div className="rt-editor-progress" aria-label={filledSections + ' dari ' + sectionMeta.length + ' bagian sudah diisi'}><div><span>{filledSections} / {String(sectionMeta.length).padStart(2, '0')} BAGIAN TERISI</span><b>{progressPercent}%</b></div><div className="rt-progress-track"><span style={{ width: progressPercent + '%' }} /></div></div>
+          </div>
+          <div className="rt-editor-guide" aria-label="Panduan penulisan Respect Thread">
+            <article className="rt-editor-guide-card"><span className="eyebrow">01 / WORD LIMIT</span><b>Batas kata</b><p>Introduction maksimal 2.000 kata. Tujuh bagian lainnya maksimal 15.000 kata per bagian. Statistics dihitung gabungan untuk empat metrik.</p></article>
+            <article className="rt-editor-guide-card"><span className="eyebrow">02 / DESCRIPTION</span><b>Deskripsi</b><p>Tulis uraian di kolom Penjelasan. URL tidak boleh berada di deskripsi; pindahkan ke Link & teks referensi. Angka dan simbol tetap diperbolehkan.</p></article>
+            <article className="rt-editor-guide-card"><span className="eyebrow">03 / REFERENCES</span><b>Referensi</b><p>Tambahkan satu URL lengkap http:// atau https:// per item, atau teks biasa. Teks biasa maksimal 100 kata per area; jumlah item tautan tidak dibatasi.</p></article>
+            <article className="rt-editor-guide-card"><span className="eyebrow">04 / MEDIA</span><b>Foto pendukung</b><p>Introduction hanya satu foto. Bagian lain bebas jumlah foto. Semua foto wajib di-crop; hasil akhir maksimal 3 MB per foto. Video tidak didukung.</p></article>
+          </div>
           <div className="rt-editor-layout">
             <nav className="rt-editor-nav" aria-label="Pilih bagian Respect Thread">
               {sectionMeta.map((meta, index) => {
@@ -643,11 +652,11 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
 
               {activeSection === 'statistic' ? <>
                 <details className="rt-legacy-panel" open={Boolean(activeContent.description.trim() || activeContent.links.length || activeContent.images.length)}>
-                  <summary>Catatan statistik umum (opsional / data lama)</summary>
+                  <summary>Catatan tambahan Statistics (opsional)</summary>
                   {renderContentEditor(activeContent, { kind: 'section', key: 'statistic' }, 'catatan statistik umum', true)}
                 </details>
                 <div className="rt-stat-editor">
-                  <div className="rt-evidence-heading"><div><span className="eyebrow">STATISTICS / 04 CATEGORIES</span><h4>Statistik karakter</h4><p>Isi level statistik, lalu tambahkan uraian, referensi, dan foto pendukung untuk setiap kategori.</p></div></div>
+                  <div className="rt-evidence-heading"><div><span className="eyebrow">STATISTICS / 04 CATEGORIES</span><h4>Statistik karakter</h4><p>Isi nilai/tier, lalu lengkapi penjelasan dan bukti untuk setiap metrik. Batas 15.000 kata berlaku untuk gabungan Attack Potency, Durability, Speed, dan Stamina.</p></div></div>
                   <div className="rt-stat-tabs" role="tablist" aria-label="Kategori statistik" onKeyDown={event => {
                     const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
                       : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
@@ -679,11 +688,11 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                 </div>
               </> : isEvidenceSection ? <>
                 <details className="rt-legacy-panel" open={Boolean(activeContent.description.trim() || activeContent.links.length || activeContent.images.length)}>
-                  <summary>Catatan umum / kompatibilitas data lama (opsional)</summary>
+                  <summary>Ringkasan umum bagian ini (opsional)</summary>
                   {renderContentEditor(activeContent, { kind: 'section', key: activeSection }, 'catatan umum', true)}
                 </details>
                 <div className="rt-evidence-manager">
-                  <div className="rt-evidence-heading"><div><span className="eyebrow">{activeSection === 'resistance' ? 'RESISTANCE ARCHIVE' : 'ABILITY ARCHIVE'}</span><h4>{activeSection === 'resistance' ? 'Daftar Resistances' : 'Daftar Hax & Ability'}</h4><p>Kelompokkan setiap jenis resistance atau ability. Tambahkan satu atau beberapa feat sebagai bukti pendukung, lengkap dengan sumber dan foto.</p></div><div className="rt-evidence-heading-actions"><span className="rt-entry-total">{evidenceEntries.length} {evidenceEntries.length === 1 ? 'entri' : 'entri'}</span><button type="button" className="rt-add-evidence" onClick={() => addEvidenceEntry(evidenceKey)}><Plus size={15} /> {activeSection === 'resistance' ? 'Tambah Resistance' : 'Tambah Ability'}</button></div></div>
+                  <div className="rt-evidence-heading"><div><span className="eyebrow">{activeSection === 'resistance' ? 'RESISTANCE ARCHIVE' : 'ABILITY ARCHIVE'}</span><h4>{activeSection === 'resistance' ? 'Daftar Resistances' : 'Daftar Hax & Ability'}</h4><p>Buat satu entri untuk setiap jenis Resistance atau Ability. Setiap entri dapat memiliki banyak Feat; batas 15.000 kata dihitung gabungan untuk semua entri dan Feat di bagian ini.</p></div><div className="rt-evidence-heading-actions"><span className="rt-entry-total">{evidenceEntries.length} {evidenceEntries.length === 1 ? 'entri' : 'entri'}</span><button type="button" className="rt-add-evidence" onClick={() => addEvidenceEntry(evidenceKey)}><Plus size={15} /> {activeSection === 'resistance' ? 'Tambah Resistance' : 'Tambah Ability'}</button></div></div>
                   {evidenceEntries.length === 0 ? <div className="rt-evidence-empty"><BookOpen size={19} /><p>Belum ada entri. Tambahkan satu {activeSection === 'resistance' ? 'jenis resistance' : 'ability'}, kemudian tambahkan feat pendukungnya.</p></div> : <div className="rt-evidence-list">
                     {evidenceEntries.map((entry, entryIndex) => <article className="rt-evidence-entry" key={entry.id}>
                       <header className="rt-evidence-entry-heading">
@@ -695,14 +704,14 @@ export default function RespectThreadManager({ token, onNavigate }: { token: str
                           </div>
                         </div>
                         <div className="rt-evidence-entry-actions">
-                          <span className="rt-feat-total">{entry.feats.length} {entry.feats.length === 1 ? 'feat' : 'feat'}</span>
+                          <span className="rt-feat-total">{entry.feats.length} feat pendukung</span>
                           <button type="button" className="rt-evidence-remove" aria-label="Hapus entri" onClick={() => removeEvidenceEntry(evidenceKey, entry.id)}><Trash2 size={14} /> Hapus entri</button>
                         </div>
                       </header>
                       <div className="rt-feat-list">
                         <div className="rt-feat-toolbar">
                           <button type="button" className="rt-add-feat" onClick={() => addFeat(evidenceKey, entry.id)}><Plus size={14} /> Tambah feat pendukung</button>
-                          <small>{entry.feats.length} feat · tombol tetap tersedia saat menggulir</small>
+                          <small>{entry.feats.length} feat dalam entri ini · tambah berikutnya langsung dari sini</small>
                         </div>
                         {entry.feats.length === 0 && <div className="rt-feat-empty">Belum ada feat. Tambahkan bukti pertama untuk entri ini.</div>}
                         {entry.feats.map((feat, featIndex) => <article className="rt-feat-card" key={feat.id}>
